@@ -106,7 +106,7 @@ AiO New Dawn is a modular agricultural control system built on the Teensy 4.1 pl
 - Auto-detects connected CAN devices like Keya steering motors
 
 **LEDManager** (`lib/aio_system/`)
-- Controls WS2812 addressable LED strip for status indication
+- Controls PCA9685-RGB LEDs for front panel status indication
 - Shows GPS fix quality, steering status, and network state
 
 **ADProcessor** (`lib/aio_system/`)
