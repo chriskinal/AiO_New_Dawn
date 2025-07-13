@@ -184,8 +184,8 @@ float ADProcessor::getWASVoltage() const
     // This divides by 2: 0-5V sensor -> 0-2.5V ADC
     // ADC voltage = (wasRaw * 3.3V) / 4095
     // Sensor voltage = ADC voltage * 2
-    float adcVoltage = (wasRaw * 3.3f) / 4095.0f;
-    return adcVoltage * 2.0f;  // Account for voltage divider
+    float adcVoltage = (wasRaw * 4.9f) / 4095.0f;
+    return adcVoltage; // * 2.0f;  // Account for voltage divider
 }
 
 void ADProcessor::printStatus() const
