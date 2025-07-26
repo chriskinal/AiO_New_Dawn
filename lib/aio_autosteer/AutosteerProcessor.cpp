@@ -752,8 +752,9 @@ void AutosteerProcessor::handleSteerData(uint8_t pgn, const uint8_t* data, size_
     // [7] = Machine sections 9-16
     
     // Extract speed
-    uint16_t speedCmS = (uint16_t)(data[1] << 8 | data[0]);
-    vehicleSpeed = speedCmS * 0.036f; // Convert cm/s to km/h
+    uint16_t speedRaw = (uint16_t)(data[1] << 8 | data[0]);
+
+    vehicleSpeed = speedRaw * 0.1f; // Convert to km/h
     
     // Extract status
     uint8_t status = data[2];
