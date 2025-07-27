@@ -838,7 +838,7 @@ void AutosteerProcessor::handleSteerData(uint8_t pgn, const uint8_t* data, size_
     
     
     // Data format (from PGNProcessor we get data starting at speed):
-    // [0-1] = Speed (uint16, cm/s)
+    // [0-1] = Speed (uint16, km/hr *10)
     // [2] = Status byte
     //       Bit 0: Guidance active
     //       Bit 6: Autosteer enable (this is what we need for button)
@@ -848,8 +848,7 @@ void AutosteerProcessor::handleSteerData(uint8_t pgn, const uint8_t* data, size_
     // [7] = Machine sections 9-16
     
     // Extract speed
-    uint16_t speedCmS = (uint16_t)(data[1] << 8 | data[0]);
-    vehicleSpeed = speedCmS * 0.036f; // Convert cm/s to km/h
+    vehicleSpeed = (uint16_t)(data[1] << 8 | data[0]) * 0.1f; // Convert to km/h
     
     // Extract status
     uint8_t status = data[2];
