@@ -14,11 +14,26 @@ const char EN_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
     <title>Device Settings - AiO New Dawn</title>
     <style>%CSS_STYLES%</style>
     <script>
+        let updateInterval = null;
+        
+        function updateEncoderCount() {
+            fetch('/api/encoder/count')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('encoderCount').textContent = data.count || 0;
+                    document.getElementById('encoderStatus').textContent = data.enabled ? 'Enabled' : 'Disabled';
+                })
+                .catch((error) => {
+                    console.error('Error fetching encoder count:', error);
+                });
+        }
+        
         function saveSettings() {
             const settings = {
                 udpPassthrough: document.getElementById('udpPassthrough').checked,
                 sensorFusion: document.getElementById('sensorFusion').checked,
-                pwmBrakeMode: document.getElementById('pwmBrakeMode').checked
+                pwmBrakeMode: document.getElementById('pwmBrakeMode').checked,
+                encoderType: parseInt(document.getElementById('encoderType').value)
             };
             
             fetch('/api/device/settings', {
@@ -51,6 +66,7 @@ const char EN_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                     document.getElementById('udpPassthrough').checked = data.udpPassthrough || false;
                     document.getElementById('sensorFusion').checked = data.sensorFusion || false;
                     document.getElementById('pwmBrakeMode').checked = data.pwmBrakeMode || false;
+                    document.getElementById('encoderType').value = data.encoderType || 1;
                 })
                 .catch((error) => {
                     console.error('Error loading settings:', error);
@@ -60,6 +76,16 @@ const char EN_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
         // Load settings when page loads
         window.onload = function() {
             loadSettings();
+            // Start updating encoder count every 100ms
+            updateEncoderCount();
+            updateInterval = setInterval(updateEncoderCount, 100);
+        };
+        
+        window.onbeforeunload = function() {
+            // Stop updates when leaving page
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
         };
     </script>
 </head>
@@ -101,6 +127,26 @@ const char EN_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                 </label>
                 <div class='help-text' style='margin-left: 25px; margin-top: 5px;'>
                     When enabled, PWM motors use brake mode (active braking). When disabled, motors use coast mode (free-wheeling). Only affects PWM-based motor drivers.
+                </div>
+            </div>
+            
+            <h2>Turn Sensor Configuration</h2>
+            
+            <div class='form-group'>
+                <label for='encoderType'>Encoder Type:</label>
+                <select id='encoderType' name='encoderType' style='width: 100%; padding: 5px;'>
+                    <option value='1'>Single Channel</option>
+                    <option value='2'>Quadrature (Dual Channel)</option>
+                </select>
+                <div class='help-text' style='margin-top: 5px;'>
+                    Single channel encoders use only the Kickout-D pin. Quadrature encoders use both Kickout-A and Kickout-D pins for direction sensing and higher resolution.
+                </div>
+                <div style='margin-top: 10px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9;'>
+                    <strong>Encoder Status:</strong> <span id='encoderStatus'>Loading...</span><br>
+                    <strong>Current Count:</strong> <span id='encoderCount' style='font-size: 1.2em; font-weight: bold;'>0</span>
+                    <div class='help-text' style='margin-top: 5px;'>
+                        Rotate the encoder to see the count change. The count will reset when autosteer is engaged.
+                    </div>
                 </div>
             </div>
             

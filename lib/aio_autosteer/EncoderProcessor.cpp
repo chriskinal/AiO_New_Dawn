@@ -74,11 +74,14 @@ void EncoderProcessor::process() {
     
     if (encoderType == EncoderType::SINGLE) {
         // Single channel encoder - count pulses
-        pulseCount = encoder->read();
+        // Since we're using the same pin twice, the Encoder library counts both edges
+        // Divide by 2 to get actual pulse count
+        int32_t rawCount = encoder->read();
+        pulseCount = abs(rawCount) / 2;
         
         // Log changes
         if (pulseCount != lastEncoderValue) {
-            LOG_DEBUG(EventSource::AUTOSTEER, "Encoder pulse count: %d", pulseCount);
+            LOG_DEBUG(EventSource::AUTOSTEER, "Encoder pulse count: %d (raw: %d)", pulseCount, rawCount);
             lastEncoderValue = pulseCount;
         }
     } else {

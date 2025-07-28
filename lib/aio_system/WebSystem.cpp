@@ -22,6 +22,7 @@
 #include "ConfigManager.h"
 #include "GNSSProcessor.h"
 #include "AutosteerProcessor.h"
+#include "EncoderProcessor.h"
 
 // For network config
 extern NetworkConfig netConfig;
@@ -138,6 +139,20 @@ void WebManager::setupRoutes() {
         
         float angle = adProc->getWASAngle();
         String json = "{\"angle\":" + String(angle, 1) + ",\"ts\":" + String(millis()) + "}";
+        request->send(200, "application/json", json);
+    });
+    
+    // Encoder count endpoint
+    server->on("/api/encoder/count", HTTP_GET, [](AsyncWebServerRequest* request) {
+        extern EncoderProcessor* encoderProcessor;
+        if (!encoderProcessor) {
+            request->send(503, "application/json", "{\"error\":\"EncoderProcessor not available\"}");
+            return;
+        }
+        
+        int32_t count = encoderProcessor->getPulseCount();
+        bool enabled = encoderProcessor->isEnabled();
+        String json = "{\"count\":" + String(count) + ",\"enabled\":" + String(enabled ? "true" : "false") + "}";
         request->send(200, "application/json", json);
     });
     
@@ -547,6 +562,7 @@ void WebManager::setupDeviceSettingsAPI() {
         doc["udpPassthrough"] = configManager.getGPSPassThrough();
         doc["sensorFusion"] = configManager.getINSUseFusion();
         doc["pwmBrakeMode"] = configManager.getPWMBrakeMode();
+        doc["encoderType"] = configManager.getEncoderType();
         
         String response;
         serializeJson(doc, response);
@@ -575,19 +591,21 @@ void WebManager::setupDeviceSettingsAPI() {
                     return;
                 }
                 
-                // Update UDP passthrough setting
+                // Update device settings
                 bool udpPassthrough = doc["udpPassthrough"] | false;
                 bool sensorFusion = doc["sensorFusion"] | false;
                 bool pwmBrakeMode = doc["pwmBrakeMode"] | false;
+                uint8_t encoderType = doc["encoderType"] | 1;  // Default to single channel
                 
                 // Update ConfigManager and save to EEPROM
                 extern ConfigManager configManager;
                 configManager.setGPSPassThrough(udpPassthrough);
                 configManager.setINSUseFusion(sensorFusion);
                 configManager.setPWMBrakeMode(pwmBrakeMode);
+                configManager.setEncoderType(encoderType);
                 configManager.saveGPSConfig();  // Save GPS settings
                 configManager.saveINSConfig();  // Save INS/fusion settings
-                configManager.saveSteerConfig();  // Save steer settings (includes PWM brake mode)
+                configManager.saveSteerConfig();  // Save steer settings (includes PWM brake mode and encoder type)
                 
                 // Apply the UDP setting to GNSSProcessor
                 extern GNSSProcessor* gnssProcessorPtr;  // Defined in main.cpp
@@ -609,6 +627,14 @@ void WebManager::setupDeviceSettingsAPI() {
                          sensorFusion ? "enabled" : "disabled");
                 LOG_INFO(EventSource::CONFIG, "PWM Motor Brake Mode %s via web interface", 
                          pwmBrakeMode ? "enabled" : "disabled");
+                LOG_INFO(EventSource::CONFIG, "Encoder Type set to %s via web interface", 
+                         encoderType == 2 ? "Quadrature" : "Single");
+                
+                // Update EncoderProcessor with new type
+                extern EncoderProcessor* encoderProcessor;
+                if (encoderProcessor) {
+                    encoderProcessor->updateConfig((EncoderType)encoderType, configManager.getShaftEncoder());
+                }
                 
                 // Send success response
                 JsonDocument response;
