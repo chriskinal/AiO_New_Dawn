@@ -1,0 +1,30 @@
+{
+    "name": "AgIsoStack",
+    "version": "0.1.0",
+    "description": "AgIsoStack ISOBUS library",
+    "build": {
+        "flags": [
+            "-fno-lto",
+            "-Os",
+            "-DCAN_STACK_DISABLE_THREADS",
+            "-DNO_TASK_CONTROLLER",
+            "-DNO_NMEA2000"
+        ],
+        "unflags": [
+            "-flto"
+        ],
+        "libLDFMode": "off",
+        "srcFilter": [
+            "+<*>",
+            "-<flex_can_t4_plugin.cpp>",
+            "-<isobus_task_controller_client.cpp>",
+            "-<isobus_task_controller_client_objects.cpp>",
+            "-<isobus_device_descriptor_object_pool.cpp>",
+            "-<isobus_guidance_interface.cpp>",
+            "-<isobus_maintain_power_interface.cpp>",
+            "-<isobus_speed_distance_messages.cpp>",
+            "-<isobus_shortcut_button_interface.cpp>",
+            "-<nmea2000_fast_packet_protocol.cpp>"
+        ]
+    }
+}
