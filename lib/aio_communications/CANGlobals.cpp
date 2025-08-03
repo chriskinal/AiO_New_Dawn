@@ -16,11 +16,15 @@ void initializeGlobalCANBuses() {
     globalCAN1.setBaudRate(250000);
     Serial.print("250kbps");
     
-    // Initialize CAN2
+    // Initialize CAN2 (unless using ISOBUS VT)
+    #ifndef ENABLE_ISOBUS_VT
     Serial.print("\r\n- CAN2: ");
     globalCAN2.begin();
     globalCAN2.setBaudRate(250000);
     Serial.print("250kbps");
+    #else
+    Serial.print("\r\n- CAN2: Reserved for ISOBUS VT");
+    #endif
     
     // Initialize CAN3
     Serial.print("\r\n- CAN3: ");

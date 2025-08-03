@@ -23,6 +23,7 @@
 #include "GNSSProcessor.h"
 #include "AutosteerProcessor.h"
 #include "EncoderProcessor.h"
+#include "WebSystemFlashmem.h"
 
 // For network config
 extern NetworkConfig netConfig;
@@ -210,7 +211,7 @@ void WebManager::setupRoutes() {
     });
 }
 
-void WebManager::handleRoot(AsyncWebServerRequest* request) {
+WEBSYSTEM_FLASHMEM void WebManager::handleRoot(AsyncWebServerRequest* request) {
     // Get IP address and link speed
     IPAddress ip = Ethernet.localIP();
     String ipStr = String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
@@ -230,7 +231,7 @@ void WebManager::handleRoot(AsyncWebServerRequest* request) {
     request->send(response);
 }
 
-void WebManager::handleApiStatus(AsyncWebServerRequest* request) {
+WEBSYSTEM_FLASHMEM void WebManager::handleApiStatus(AsyncWebServerRequest* request) {
     // Simple JSON response for now
     JsonDocument doc;
     doc["status"] = "ok";
@@ -309,7 +310,7 @@ void WebManager::setupEventLoggerAPI() {
     
 }
 
-void WebManager::handleEventLoggerPage(AsyncWebServerRequest* request) {
+WEBSYSTEM_FLASHMEM void WebManager::handleEventLoggerPage(AsyncWebServerRequest* request) {
     // Get current configuration
     EventLogger* logger = EventLogger::getInstance();
     EventConfig& config = logger->getConfig();
@@ -356,7 +357,7 @@ String WebManager::buildLevelOptions(uint8_t selectedLevel) {
     return options;
 }
 
-void WebManager::handleNetworkPage(AsyncWebServerRequest* request) {
+WEBSYSTEM_FLASHMEM void WebManager::handleNetworkPage(AsyncWebServerRequest* request) {
     // Get current IP configuration
     IPAddress ip = Ethernet.localIP();
     String ipStr = String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
@@ -474,7 +475,7 @@ void WebManager::setupNetworkAPI() {
     );
 }
 
-void WebManager::handleOTAPage(AsyncWebServerRequest* request) {
+WEBSYSTEM_FLASHMEM void WebManager::handleOTAPage(AsyncWebServerRequest* request) {
     // Load page template
     const char* pageTemplate = WebPageSelector::getOTAPage(currentLanguage);
     size_t templateLen = strlen_P(pageTemplate);
@@ -525,7 +526,7 @@ void WebManager::setupOTARoutes() {
     );
 }
 
-void WebManager::handleDeviceSettingsPage(AsyncWebServerRequest* request) {
+WEBSYSTEM_FLASHMEM void WebManager::handleDeviceSettingsPage(AsyncWebServerRequest* request) {
     // Load page template with proper buffer handling
     const char* pageTemplate = WebPageSelector::getDeviceSettingsPage(currentLanguage);
     size_t templateLen = strlen_P(pageTemplate);
@@ -647,7 +648,7 @@ void WebManager::setupDeviceSettingsAPI() {
     );
 }
 
-void WebManager::handleNotFound(AsyncWebServerRequest* request) {
+WEBSYSTEM_FLASHMEM void WebManager::handleNotFound(AsyncWebServerRequest* request) {
     String message = "404 Not Found\n\n";
     message += "URI: ";
     message += request->url();
@@ -769,7 +770,7 @@ bool OTAHandler::init() {
     return true;
 }
 
-void OTAHandler::handleOTAUpload(AsyncWebServerRequest *request, String filename, 
+WEBSYSTEM_FLASHMEM void OTAHandler::handleOTAUpload(AsyncWebServerRequest *request, String filename, 
                                  size_t index, uint8_t *data, size_t len, bool final) {
     
     // Start OTA process on first chunk
@@ -869,7 +870,7 @@ void OTAHandler::handleOTAUpload(AsyncWebServerRequest *request, String filename
     }
 }
 
-void OTAHandler::handleOTAComplete(AsyncWebServerRequest *request) {
+WEBSYSTEM_FLASHMEM void OTAHandler::handleOTAComplete(AsyncWebServerRequest *request) {
     if (!otaComplete) {
         request->send(400, "text/plain", "Upload incomplete");
         return;

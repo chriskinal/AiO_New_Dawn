@@ -24,12 +24,20 @@
 #include "MachineProcessor.h"
 // SubnetManager functionality moved to QNetworkBase
 #include "EventLogger.h"
+#ifndef DISABLE_SERIAL_MENU
 #include "CommandHandler.h"
+#endif
 #include "PGNProcessor.h"
 #include "RTCMProcessor.h"
+#ifndef DISABLE_WEB_SERVER
 #include "WebManager.h"
+#endif
 #include "Version.h"
 #include "OTAHandler.h"
+
+#ifdef ENABLE_ISOBUS_VT
+#include "VTClient.h"
+#endif
 
 // Flash ID for OTA verification - must match FLASH_ID in FlashTxx.h
 const char* flash_id = "fw_teensy41";
@@ -46,7 +54,9 @@ IMUProcessor imuProcessor;
 ADProcessor adProcessor;
 PWMProcessor pwmProcessor;
 // LEDManagerFSM ledManagerFSM; // Global instance already defined in LEDManagerFSM.cpp
+#ifndef DISABLE_WEB_SERVER
 WebManager webManager;
+#endif
 MotorDriverInterface *motorPTR = nullptr; // Motor driver still uses factory pattern
 
 // Loop timing diagnostics
@@ -285,26 +295,42 @@ void setup()
     LOG_ERROR(EventSource::SYSTEM, "MachineProcessor FAILED");
   }
 
+  // Initialize ISOBUS VT Client (optional - only if enabled)
+  #ifdef ENABLE_ISOBUS_VT
+  VTClient* vtClient = VTClient::getInstance();
+  if (vtClient->init()) {
+    LOG_INFO(EventSource::SYSTEM, "ISOBUS VT Client initialized on CAN2");
+  } else {
+    LOG_ERROR(EventSource::SYSTEM, "ISOBUS VT Client FAILED");
+  }
+  #endif
+
   // PGN 201 handling is now done by QNetworkBase
 
+  #ifndef DISABLE_SERIAL_MENU
   // Initialize CommandHandler
   CommandHandler::init();
   CommandHandler* cmdHandler = CommandHandler::getInstance();
   cmdHandler->setMachineProcessor(machinePTR);
   LOG_INFO(EventSource::SYSTEM, "CommandHandler initialized");
+  #endif
 
+  #ifndef DISABLE_WEB_SERVER
   // Initialize WebManager
   if (webManager.begin()) {
     LOG_INFO(EventSource::SYSTEM, "WebManager initialized");
   } else {
     LOG_ERROR(EventSource::SYSTEM, "WebManager FAILED");
   }
+  #endif
 
   // Exit startup mode - start enforcing configured log levels
   EventLogger::getInstance()->setStartupMode(false);
   
+  #ifndef DISABLE_WEB_SERVER
   // Mark web manager as ready for SSE updates
   webManager.setSystemReady();
+  #endif
   
   // Display access information
   localIP = Ethernet.localIP();  // Reuse existing variable
@@ -345,8 +371,10 @@ void loop()
     EventLogger::getInstance()->checkNetworkReady();
   }
 
+  #ifndef DISABLE_SERIAL_MENU
   // Process serial commands through CommandHandler
   CommandHandler::getInstance()->process();
+  #endif
   
   // Process IMU data
   imuProcessor.process();
@@ -383,8 +411,15 @@ void loop()
     ledManagerFSM.updateAll();
   }
   
+  #ifndef DISABLE_WEB_SERVER
   // Update SSE clients with WAS data if enabled
   webManager.updateWASClients();
+  #endif
+  
+  // Update ISOBUS VT Client
+  #ifdef ENABLE_ISOBUS_VT
+  VTClient::getInstance()->update();
+  #endif
     
   // Update PWM speed pulse from GPS
   static uint32_t lastSpeedUpdate = 0;
