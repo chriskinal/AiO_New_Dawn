@@ -443,6 +443,8 @@ void loop()
     gnssProcessor.processUBXByte(b);
   }
 
+  SerialManager::getInstance()->processRadio();  // Process radio data (RTCM/RTK)
+
   // Loop timing - ultra lightweight, just increment counter
   if (loopTimingEnabled) {
     loopCount++;

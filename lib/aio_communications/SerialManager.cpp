@@ -60,8 +60,8 @@ bool SerialManager::initializeSerialPorts()
     SerialGPS2.addMemoryForWrite(gps2TxBuffer, sizeof(gps2TxBuffer));
 
     // RTK Radio Serial - use class member buffer
-    SerialRTK.begin(BAUD_RTK);
-    SerialRTK.addMemoryForRead(rtkRxBuffer, sizeof(rtkRxBuffer));
+    SerialRadio.begin(BAUD_RADIO);
+    SerialRadio.addMemoryForRead(radioRxBuffer, sizeof(radioRxBuffer));
 
     // RS232 Serial - use class member buffer
     SerialRS232.begin(BAUD_RS232);
@@ -76,7 +76,7 @@ bool SerialManager::initializeSerialPorts()
     serialIMU->begin(BAUD_IMU);
 
     LOG_DEBUG(EventSource::SYSTEM, "SerialGPS1/GPS2: %i baud", BAUD_GPS);
-    LOG_DEBUG(EventSource::SYSTEM, "SerialRTK: %i baud", BAUD_RTK);
+    LOG_DEBUG(EventSource::SYSTEM, "SerialRadio: %i baud", BAUD_RADIO);
     LOG_DEBUG(EventSource::SYSTEM, "SerialRS232: %i baud", BAUD_RS232);
     LOG_DEBUG(EventSource::SYSTEM, "SerialESP32: %i baud", BAUD_ESP32);
     LOG_DEBUG(EventSource::SYSTEM, "SerialIMU: %i baud", BAUD_IMU);
@@ -110,12 +110,12 @@ void SerialManager::processGPS2()
     // Don't read GPS data here - it's handled in main.cpp loop
 }
 
-void SerialManager::processRTK()
+void SerialManager::processRadio()
 {
     // RTK/RTCM processing
-    if (SerialRTK.available())
+    if (SerialRadio.available())
     {
-        uint8_t rtcmByte = SerialRTK.read();
+        uint8_t rtcmByte = SerialRadio.read();
 
         // Forward RTCM to GPS1 (unless bridged)
         if (!isGPS1Bridged())
@@ -288,9 +288,9 @@ int32_t SerialManager::getGPSBaudRate() const
     return BAUD_GPS;
 }
 
-int32_t SerialManager::getRTKBaudRate() const
+int32_t SerialManager::getRadioBaudRate() const
 {
-    return BAUD_RTK;
+    return BAUD_RADIO;
 }
 
 int32_t SerialManager::getESP32BaudRate() const
@@ -326,7 +326,7 @@ void SerialManager::printSerialConfiguration()
     LOG_INFO(EventSource::SYSTEM, "--- Serial Configuration ---");
     LOG_INFO(EventSource::SYSTEM, "SerialGPS1 (Serial5): %i baud", BAUD_GPS);
     LOG_INFO(EventSource::SYSTEM, "SerialGPS2 (Serial8): %i baud", BAUD_GPS);
-    LOG_INFO(EventSource::SYSTEM, "SerialRTK (Serial3): %i baud", BAUD_RTK);
+    LOG_INFO(EventSource::SYSTEM, "SerialRadio (Serial3): %i baud", BAUD_RADIO);
     LOG_INFO(EventSource::SYSTEM, "SerialRS232 (Serial7): %i baud", BAUD_RS232);
     LOG_INFO(EventSource::SYSTEM, "SerialESP32 (Serial2): %i baud", BAUD_ESP32);
     LOG_INFO(EventSource::SYSTEM, "SerialIMU (Serial4): %i baud", BAUD_IMU);

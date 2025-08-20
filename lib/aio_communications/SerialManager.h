@@ -4,7 +4,7 @@
 #include "Arduino.h"
 
 // Serial port definitions (self-contained, no pcb.h dependency)
-#define SerialRTK Serial3
+#define SerialRadio Serial3
 #define SerialGPS1 Serial5
 #define SerialGPS2 Serial8
 #define SerialRS232 Serial7
@@ -12,7 +12,7 @@
 
 // Baud rates (self-contained constants)
 const int32_t baudGPS = 460800;
-const int32_t baudRTK = 115200;
+const int32_t baudRadio = 115200;
 const int32_t baudRS232 = 115200;
 const int32_t baudESP32 = 460800;
 const int32_t baudIMU = 115200;
@@ -30,7 +30,7 @@ private:
     uint8_t gps1TxBuffer[256];
     uint8_t gps2RxBuffer[128];
     uint8_t gps2TxBuffer[256];
-    uint8_t rtkRxBuffer[64];
+    uint8_t radioRxBuffer[64];
     uint8_t rs232TxBuffer[256];
     uint8_t esp32RxBuffer[256];
     uint8_t esp32TxBuffer[256];
@@ -46,13 +46,13 @@ public:
     // Buffer sizes (matching pcb.h values - using existing global buffers)
     static const uint16_t GPS_BUFFER_SIZE = 128;    // GPS1rxbuffer size from pcb.h
     static const uint16_t GPS_TX_BUFFER_SIZE = 256; // GPS1txbuffer size from pcb.h
-    static const uint16_t RTK_BUFFER_SIZE = 64;
+    static const uint16_t RADIO_BUFFER_SIZE = 64;
     static const uint16_t RS232_BUFFER_SIZE = 256;
     static const uint16_t ESP32_BUFFER_SIZE = 256;
 
     // Baud rates (matching pcb.h values)
     static const int32_t BAUD_GPS = 460800;
-    static const int32_t BAUD_RTK = 115200;
+    static const int32_t BAUD_RADIO = 115200;
     static const int32_t BAUD_RS232 = 115200;
     static const int32_t BAUD_ESP32 = 460800;
     static const int32_t BAUD_IMU = 115200;
@@ -72,7 +72,7 @@ public:
     // Serial processing methods
     void processGPS1();
     void processGPS2();
-    void processRTK();
+    void processRadio();
     void processRS232();
     void processESP32();
     void processIMU();
@@ -91,7 +91,7 @@ public:
 
     // Baud rate getters
     int32_t getGPSBaudRate() const;
-    int32_t getRTKBaudRate() const;
+    int32_t getRadioBaudRate() const;
     int32_t getESP32BaudRate() const;
     int32_t getRS232BaudRate() const;
     int32_t getIMUBaudRate() const;
