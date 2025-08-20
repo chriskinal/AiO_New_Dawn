@@ -67,10 +67,12 @@ Manages shared hardware resources:
 - **Encoder B**: 3 (quadrature mode only)
 
 #### Communication Pins
-- **GPS Serial**: Serial2 (RX2/TX2)
-- **RTK Serial**: Serial7
+- **GPS1 Serial**: Serial5 (RX5/TX5)
+- **GPS2 Serial**: Serial8 (RX8/TX8)
+- **Radio Serial**: Serial3
 - **IMU Serial**: Serial4 (RX4/TX4)
-- **RS232**: Serial3
+- **RS232**: Serial7
+- **ESP32**: Serial2
 - **Keya Serial**: Serial1 (when not using CAN)
 
 #### I2C Devices

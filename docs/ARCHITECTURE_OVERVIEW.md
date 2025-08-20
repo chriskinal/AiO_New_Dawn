@@ -58,7 +58,7 @@ AiO New Dawn is a modular agricultural control system built on the Teensy 4.1 pl
 - OTA firmware update support via web interface
 
 **SerialManager** (`lib/aio_communications/`)
-- Manages multiple hardware serial ports for GPS, RTK, IMU, and RS232
+- Manages multiple hardware serial ports for GPS, Radio, IMU, and RS232
 - Provides bridging functionality between serial devices and UDP
 
 ### Navigation & Positioning

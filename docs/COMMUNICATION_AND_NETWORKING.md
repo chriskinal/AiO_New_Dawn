@@ -74,11 +74,13 @@ Centralized management of multiple serial ports:
 
 ```cpp
 SerialManager::getInstance()
-    ├── Serial2 (GPS1) - 115200 baud
-    ├── Serial7 (GPS2/RTK) - Variable baud
-    ├── Serial4 (IMU) - 115200 baud
-    ├── Serial3 (RS232) - 38400 baud
-    └── Serial1 (Keya) - 115200 baud
+    ├── Serial5 (GPS1)  - 460800 baud
+    ├── Serial8 (GPS2)  - 460800 baud
+    ├── Serial3 (Radio) - 115200 baud
+    ├── Serial4 (IMU)   - 115200 baud
+    ├── Serial7 (RS232) - 38400 baud
+    ├── Serial2 (ESP32) - 460800 baud
+    └── Serial1 (Keya)  - 115200 baud
 ```
 
 ### GPS/GNSS Communication

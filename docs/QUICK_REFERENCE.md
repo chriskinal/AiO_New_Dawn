@@ -72,10 +72,13 @@ Press `?` for interactive menu:
 - **Steer Button**: Pin 32
 
 ### Communication
-- **GPS1**: Serial2
-- **GPS2/RTK**: Serial7
-- **IMU**: Serial4
-- **RS232**: Serial3
+- **GPS1 Serial**: Serial5
+- **GPS2 Serial**: Serial8
+- **Radio Serial**: Serial3
+- **IMU Serial**: Serial4
+- **RS232**: Serial7
+- **ESP32**: Serial2
+- **Keya Serial**: Serial1 (when not using CAN)
 - **CAN**: CAN3
 
 ### I2C Devices
