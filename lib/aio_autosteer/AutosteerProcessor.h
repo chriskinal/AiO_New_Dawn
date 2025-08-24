@@ -129,6 +129,7 @@ public:
     bool init();
     void process();
     void initializeFusion();  // Initialize sensor fusion separately
+    float rowSenseProcess(float targetAngle);
     
     // PGN handlers
     void handleBroadcastPGN(uint8_t pgn, const uint8_t* data, size_t len);
@@ -162,6 +163,7 @@ public:
     // Public getters for state
     bool isEnabled() const { return autosteerEnabled; }
     float getTargetAngle() const { return targetAngle; }
+    void setTargetAngle(float angle) { targetAngle = angle; }
 
     // Public getter for PGN254 vehicle speed 
     float getVehicleSpeed() const { return vehicleSpeed; }
