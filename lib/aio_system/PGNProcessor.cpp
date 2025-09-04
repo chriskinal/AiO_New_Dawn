@@ -1,6 +1,7 @@
 #include "PGNProcessor.h"
 #include "ConfigManager.h" // Full definition needed for method calls
 #include "EventLogger.h"
+#include "SerialManager.h" // For sending UDP Data to ESP32: everyDataEverywhere
 
 // External declaration of the global object (defined in main.cpp)
 extern ConfigManager configManager;
@@ -42,6 +43,9 @@ void PGNProcessor::processPGN(const uint8_t* data, size_t len, const IPAddress& 
 
     if (remotePort == 9999 && len >= 5)
     {
+       //foreward PGN to ESP32 via Serial: everyDataEverywhere
+        SerialESP32.write(data, len); SerialESP32.println();
+
         // Verify first 3 PGN header bytes
         if (data[0] != 128 || data[1] != 129 || data[2] != 127)
         {
