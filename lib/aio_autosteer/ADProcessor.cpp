@@ -34,6 +34,17 @@ ADProcessor::ADProcessor() :
     }
     currentRunningSum = 0.0f;
     
+    // Initialize JD PWM data
+    jdPWMMode = false;
+    jdPWMDutyTime = 0;
+    jdPWMDutyTimePrev = 0;
+    jdPWMRiseTime = 0;
+    jdPWMPrevRiseTime = 0;
+    jdPWMPeriod = 0;
+    jdPWMDutyPercent = 0.0f;
+    jdPWMDutyPercentPrev = 0.0f;
+    jdPWMMotionValue = 0.0f;
+    
     instance = this;
 }
 
@@ -59,6 +70,15 @@ bool ADProcessor::init()
     LOG_INFO(EventSource::AUTOSTEER, "Analog work switch config: Enabled=%d, SP=%d%%, H=%d%%, Inv=%d",
              analogWorkSwitchEnabled, workSwitchSetpoint, workSwitchHysteresis, invertWorkSwitch);
     
+    // Check for JD PWM mode
+    jdPWMMode = configManager.getJDPWMEnabled();
+    if (jdPWMMode) {
+        LOG_INFO(EventSource::AUTOSTEER, "JD PWM encoder mode enabled (uses AOG pressure threshold)");
+        LOG_DEBUG(EventSource::AUTOSTEER, "JD_PWM_INIT: Mode ENABLED (uses AOG pressure threshold)");
+    } else {
+        LOG_DEBUG(EventSource::AUTOSTEER, "JD_PWM_INIT: Mode DISABLED (using analog pressure mode)");
+    }
+    
     // Configure pins with ownership tracking
     pinMode(AD_STEER_PIN, INPUT_PULLUP);      // Steer switch with internal pullup
     
@@ -67,13 +87,28 @@ bool ADProcessor::init()
     
     pinMode(AD_WAS_PIN, INPUT_DISABLE);       // WAS analog input (no pullup)
     
-    // Request ownership of KICKOUT_A for pressure sensor mode
+    // Request ownership of appropriate kickout pin based on mode
     HardwareManager* hwMgr = HardwareManager::getInstance();
-    if (hwMgr->requestPinOwnership(AD_KICKOUT_A_PIN, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor")) {
-        pinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE); // Pressure sensor analog input
-        hwMgr->updatePinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE);
+    if (jdPWMMode) {
+        // JD PWM mode uses digital pin
+        if (hwMgr->requestPinOwnership(AD_KICKOUT_D_PIN, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor-JDPWM")) {
+            pinMode(AD_KICKOUT_D_PIN, INPUT_PULLUP);
+            hwMgr->updatePinMode(AD_KICKOUT_D_PIN, INPUT_PULLUP);
+            
+            attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMRisingISR, RISING);
+            LOG_INFO(EventSource::AUTOSTEER, "JD_ENC: Mode enabled on pin %d", AD_KICKOUT_D_PIN);
+        } else {
+            LOG_WARNING(EventSource::AUTOSTEER, "JD_ENC: Failed to get ownership of KICKOUT_D pin %d - may be in use by encoder", AD_KICKOUT_D_PIN);
+        }
     } else {
-        LOG_WARNING(EventSource::AUTOSTEER, "Failed to get ownership of KICKOUT_A pin");
+        // Analog pressure sensor mode uses analog pin
+        if (hwMgr->requestPinOwnership(AD_KICKOUT_A_PIN, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor")) {
+            pinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE);
+            hwMgr->updatePinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE);
+            LOG_INFO(EventSource::AUTOSTEER, "KICKOUT_A pin configured for analog pressure sensor");
+        } else {
+            LOG_WARNING(EventSource::AUTOSTEER, "Failed to get ownership of KICKOUT_A pin");
+        }
     }
     
     pinMode(AD_CURRENT_PIN, INPUT_DISABLE);   // Current sensor analog input
@@ -169,24 +204,119 @@ void ADProcessor::process()
         // Update switches
         updateSwitches();
         
-        // Read kickout sensors
-        kickoutAnalogRaw = analogRead(AD_KICKOUT_A_PIN);
-        
-        // Debug current sensor reading
-        static uint32_t lastCurrentDebug = 0;
-        
-        if (millis() - lastCurrentDebug > 2000) {  // Every 2 seconds
-            lastCurrentDebug = millis();
-            LOG_DEBUG(EventSource::AUTOSTEER, "Current sensor: Averaged reading=%.1f (from %d samples)", 
-                      currentReading, CURRENT_BUFFER_SIZE);
+        if (jdPWMMode) {
+            // In JD PWM mode, calculate motion value from duty cycle
+            uint32_t now = millis();
+            
+            
+            // Log JD PWM status periodically
+            static uint32_t lastStatusLog = 0;
+            static uint32_t lastMotionLog = 0;
+            static bool wasMoving = false;
+            
+            // Log basic status every 5 seconds if signal present
+            if (now - lastStatusLog > 5000 && jdPWMPeriod > 0) {
+                LOG_INFO(EventSource::AUTOSTEER, "JD_ENC Status: duty=%.1f%%, period=%dus, motion=%.1f%%, pressure=%.0f", 
+                         jdPWMDutyPercent, jdPWMPeriod, jdPWMMotionValue, pressureReading);
+                lastStatusLog = now;
+            }
+            
+            // Log motion events immediately
+            bool isMoving = (jdPWMMotionValue > 5.0f);
+            if (isMoving != wasMoving) {
+                if (isMoving) {
+                    LOG_INFO(EventSource::AUTOSTEER, "JD_ENC Motion START: duty=%.1f%%, motion=%.1f%%", 
+                             jdPWMDutyPercent, jdPWMMotionValue);
+                } else {
+                    LOG_INFO(EventSource::AUTOSTEER, "JD_ENC Motion STOP: duty=%.1f%%", jdPWMDutyPercent);
+                }
+                wasMoving = isMoving;
+            }
+            
+            // Log high motion values
+            if (isMoving && now - lastMotionLog > 1000) {
+                LOG_DEBUG(EventSource::AUTOSTEER, "JD_ENC Moving: duty=%.1f%%->%.1f%%, motion=%.1f%%, pressure=%.0f", 
+                          jdPWMDutyPercentPrev, jdPWMDutyPercent, jdPWMMotionValue, pressureReading);
+                lastMotionLog = now;
+            }
+            
+            // Check if we have valid duty cycle data
+            // Actual observed range: 4% to 94% (90% total range)
+            if (jdPWMDutyPercent >= 2.0f && jdPWMDutyPercent <= 96.0f && jdPWMPeriod > 0) {
+                // Store previous value before updating
+                if (jdPWMDutyPercentPrev == 0.0f) {
+                    jdPWMDutyPercentPrev = jdPWMDutyPercent;
+                }
+                
+                // Calculate motion based on duty cycle change
+                // JD encoder continuously rotates - no center position
+                // Motion is simply the change in duty cycle
+                float motionPercent = abs(jdPWMDutyPercent - jdPWMDutyPercentPrev);
+                
+                // Apply noise floor filter
+                // Tester observed: 0-5us variation when stationary (0-0.1% duty cycle)
+                // Actual motion: 6-56us change (0.12-1.12% duty cycle)
+                const float noiseFloor = 0.1f;  // 0.1% duty cycle = 5us at 200Hz
+                
+                if (motionPercent < noiseFloor) {
+                    motionPercent = 0.0f;  // Filter out noise
+                }
+                
+                // Scale motion to 0-255 range
+                // Typical max observed motion ~1.12% (56us at 200Hz)
+                // Get sensitivity from config (1-10, where 10 is most sensitive)
+                extern ConfigManager configManager;
+                uint8_t sensitivity = configManager.getJDPWMSensitivity();
+                
+                // Map sensitivity 1-10 to motion scale 5.0-0.5
+                // Sensitivity 1 = 5% motion for full scale (least sensitive)
+                // Sensitivity 10 = 0.5% motion for full scale (most sensitive)
+                float motionScale = 5.5f - (sensitivity * 0.5f);
+                
+                float sensorReading = (motionPercent / motionScale) * 255.0f;
+                sensorReading = min(sensorReading, 255.0f);
+                
+                // Convert to percentage for our system
+                jdPWMMotionValue = (sensorReading / 255.0f) * 100.0f;
+                
+                // Store current as previous for next cycle
+                jdPWMDutyPercentPrev = jdPWMDutyPercent;
+                
+                // Update pressure reading immediately
+                pressureReading = (jdPWMMotionValue * 255.0f) / 100.0f;
+            } else {
+                // Invalid duty cycle
+                if (jdPWMDutyPercent > 0 && (jdPWMDutyPercent < 2.0f || jdPWMDutyPercent > 96.0f)) {
+                    static uint32_t lastInvalidLog = 0;
+                    if (now - lastInvalidLog > 2000) {
+                        LOG_WARNING(EventSource::AUTOSTEER, "JD_ENC Invalid duty: %.1f%% (valid: 2-96%%)", 
+                                    jdPWMDutyPercent);
+                        lastInvalidLog = now;
+                    }
+                }
+                jdPWMMotionValue = 0;
+                pressureReading = 0;
+            }
+        } else {
+            // Normal analog pressure sensor mode
+            kickoutAnalogRaw = analogRead(AD_KICKOUT_A_PIN);
+            
+            // Debug current sensor reading
+            static uint32_t lastCurrentDebug = 0;
+            
+            if (millis() - lastCurrentDebug > 2000) {  // Every 2 seconds
+                lastCurrentDebug = millis();
+                LOG_DEBUG(EventSource::AUTOSTEER, "Current sensor: Averaged reading=%.1f (from %d samples)", 
+                          currentReading, CURRENT_BUFFER_SIZE);
+            }
+            
+            // Update pressure sensor reading with filtering
+            // Scale 12-bit ADC (0-4095) to match NG-V6 behavior
+            float sensorSample = (float)kickoutAnalogRaw;
+            sensorSample *= 0.15f;  // Scale down to try matching old AIO
+            sensorSample = min(sensorSample, 255.0f);  // Limit to 1 byte (0-255)
+            pressureReading = pressureReading * 0.8f + sensorSample * 0.2f;  // 80/20 filter
         }
-        
-        // Update pressure sensor reading with filtering
-        // Scale 12-bit ADC (0-4095) to match NG-V6 behavior
-        float sensorSample = (float)kickoutAnalogRaw;
-        sensorSample *= 0.15f;  // Scale down to try matching old AIO
-        sensorSample = min(sensorSample, 255.0f);  // Limit to 1 byte (0-255)
-        pressureReading = pressureReading * 0.8f + sensorSample * 0.2f;  // 80/20 filter
     }
     
     lastProcessTime = millis();
@@ -330,6 +460,25 @@ float ADProcessor::getWASVoltage() const
     return adcVoltage * 2.0f;  // Account for voltage divider
 }
 
+float ADProcessor::getJDPWMPosition() const
+{
+    if (!jdPWMMode || jdPWMDutyPercent <= 0) {
+        return 50.0f; // Center position if no signal
+    }
+    
+    // Scale 4-94% duty cycle to 0-99% position
+    const float minDuty = 4.0f;
+    const float maxDuty = 94.0f;
+    
+    // Clamp to valid range
+    float duty = constrain(jdPWMDutyPercent, minDuty, maxDuty);
+    
+    // Scale to 0-99%
+    float position = ((duty - minDuty) / (maxDuty - minDuty)) * 99.0f;
+    
+    return position;
+}
+
 void ADProcessor::printStatus() const
 {
     LOG_INFO(EventSource::AUTOSTEER, "=== A/D Processor Status ===");
@@ -400,10 +549,11 @@ void ADProcessor::setWorkSwitchSetpoint(float sp)
 
 void ADProcessor::setWorkSwitchHysteresis(float h)
 {
-    workSwitchHysteresis = constrain(h, 5.0f, 25.0f);
+    workSwitchHysteresis = constrain(h, 1.0f, 25.0f);
     extern ConfigManager configManager;
     configManager.setWorkSwitchHysteresis((uint8_t)workSwitchHysteresis);
     configManager.saveAnalogWorkSwitchConfig();
+    LOG_INFO(EventSource::AUTOSTEER, "Work switch hysteresis set to %.0f%%", workSwitchHysteresis);
 }
 
 void ADProcessor::setInvertWorkSwitch(bool inv)
@@ -412,4 +562,84 @@ void ADProcessor::setInvertWorkSwitch(bool inv)
     extern ConfigManager configManager;
     configManager.setInvertWorkSwitch(inv);
     configManager.saveAnalogWorkSwitchConfig();
+}
+
+// JD PWM mode implementation
+void ADProcessor::setJDPWMMode(bool enabled)
+{
+    if (jdPWMMode == enabled) return; // No change
+    
+    jdPWMMode = enabled;
+    extern ConfigManager configManager;
+    configManager.setJDPWMEnabled(enabled);
+    configManager.saveTurnSensorConfig();
+    
+    HardwareManager* hwMgr = HardwareManager::getInstance();
+    
+    if (enabled) {
+        // Release analog pin and acquire digital pin
+        hwMgr->releasePinOwnership(AD_KICKOUT_A_PIN, HardwareManager::OWNER_ADPROCESSOR);
+        
+        if (hwMgr->requestPinOwnership(AD_KICKOUT_D_PIN, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor-JDPWM")) {
+            pinMode(AD_KICKOUT_D_PIN, INPUT_PULLUP);
+            hwMgr->updatePinMode(AD_KICKOUT_D_PIN, INPUT_PULLUP);
+            attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMRisingISR, RISING);
+            LOG_INFO(EventSource::AUTOSTEER, "JD_ENC: Mode ENABLED on pin %d", AD_KICKOUT_D_PIN);
+        }
+    } else {
+        // Release digital pin and acquire analog pin
+        detachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN));
+        hwMgr->releasePinOwnership(AD_KICKOUT_D_PIN, HardwareManager::OWNER_ADPROCESSOR);
+        
+        if (hwMgr->requestPinOwnership(AD_KICKOUT_A_PIN, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor")) {
+            pinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE);
+            hwMgr->updatePinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE);
+            LOG_INFO(EventSource::AUTOSTEER, "JD_ENC: Mode DISABLED - analog pressure mode restored");
+        }
+    }
+}
+
+// JD PWM interrupt handlers
+void ADProcessor::jdPWMRisingISR()
+{
+    if (instance) {
+        uint32_t nowMicros = micros();
+        
+        // Calculate period from previous rising edge
+        if (instance->jdPWMRiseTime != 0) {
+            instance->jdPWMPeriod = nowMicros - instance->jdPWMRiseTime;
+            
+            // Calculate duty cycle percentage
+            if (instance->jdPWMPeriod > 0 && instance->jdPWMDutyTime > 0) {
+                instance->jdPWMDutyPercent = (instance->jdPWMDutyTime * 100.0f) / instance->jdPWMPeriod;
+            }
+        }
+        
+        instance->jdPWMPrevRiseTime = instance->jdPWMRiseTime;
+        instance->jdPWMRiseTime = nowMicros;
+        attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMFallingISR, FALLING);
+        
+        // Track interrupt rate for diagnostics
+        static uint32_t riseCount = 0;
+        static uint32_t lastRateCheck = 0;
+        riseCount++;
+        
+        uint32_t now = millis();
+        if (now - lastRateCheck > 10000) { // Every 10 seconds
+            uint32_t rate = riseCount * 100 / ((now - lastRateCheck) / 10); // Rate per second
+            LOG_DEBUG(EventSource::AUTOSTEER, "JD_ENC Signal: %lu Hz, period=%luus, duty=%.1f%%", 
+                      rate, instance->jdPWMPeriod, instance->jdPWMDutyPercent);
+            riseCount = 0;
+            lastRateCheck = now;
+        }
+    }
+}
+
+void ADProcessor::jdPWMFallingISR()
+{
+    if (instance) {
+        uint32_t fallTime = micros();
+        instance->jdPWMDutyTime = fallTime - instance->jdPWMRiseTime;
+        attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMRisingISR, RISING);
+    }
 }

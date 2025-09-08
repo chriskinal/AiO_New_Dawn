@@ -31,7 +31,9 @@ EventLogger::EventLogger() {
         buckets[i].lastRefillTime = now;
     }
     
-    // QNEthernet doesn't need explicit log level management
+    // Initialize UDP socket for syslog
+    // QNEthernet UDP sockets don't need explicit begin() call
+    // They are initialized on first use
 }
 
 EventLogger::~EventLogger() {

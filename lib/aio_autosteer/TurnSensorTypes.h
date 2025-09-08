@@ -8,7 +8,8 @@ enum class TurnSensorType : uint8_t {
     NONE = 0,
     ENCODER = 1,      // Rotary encoder (single or quadrature)
     PRESSURE = 2,     // Hydraulic pressure sensor
-    CURRENT = 3       // Motor current sensor
+    CURRENT = 3,      // Motor current sensor
+    JD_PWM = 4        // John Deere PWM encoder
 };
 
 // Encoder types

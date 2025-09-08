@@ -91,12 +91,16 @@ private:
     uint8_t ledBrightness;
     
     // Turn sensor configuration
-    uint8_t turnSensorType;      // 0=None, 1=Encoder, 2=Pressure, 3=Current
+    uint8_t turnSensorType;      // 0=None, 1=Encoder, 2=Pressure, 3=Current, 4=JD PWM
     uint8_t encoderType;         // 1=Single, 2=Quadrature
     uint8_t turnMaxPulseCount;   // Max encoder pulses before kickout
     uint8_t pressureThreshold;   // Pressure sensor threshold
     uint8_t currentThreshold;    // Current sensor threshold
     uint16_t currentZeroOffset;  // Current sensor zero offset
+    
+    // John Deere PWM encoder configuration
+    bool jdPWMEnabled;           // Enable JD PWM mode for pressure input
+    uint8_t jdPWMSensitivity;    // JD PWM sensitivity 1-10 (1=least sensitive, 10=most sensitive)
     
     // Analog work switch configuration
     bool analogWorkSwitchEnabled;
@@ -263,6 +267,12 @@ public:
     void setCurrentThreshold(uint8_t value) { currentThreshold = value; }
     uint16_t getCurrentZeroOffset() const { return currentZeroOffset; }
     void setCurrentZeroOffset(uint16_t value) { currentZeroOffset = value; }
+    
+    // John Deere PWM encoder methods
+    bool getJDPWMEnabled() const { return jdPWMEnabled; }
+    void setJDPWMEnabled(bool value) { jdPWMEnabled = value; }
+    uint8_t getJDPWMSensitivity() const { return jdPWMSensitivity; }
+    void setJDPWMSensitivity(uint8_t value) { jdPWMSensitivity = constrain(value, 1, 10); }
 
     // Analog work switch methods
     bool getAnalogWorkSwitchEnabled() const { return analogWorkSwitchEnabled; }

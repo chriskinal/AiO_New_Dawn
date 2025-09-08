@@ -20,7 +20,8 @@ public:
         CURRENT_HIGH = 3,
         MOTOR_SLIP = 4,
         KEYA_SLIP = 5,
-        KEYA_ERROR = 6
+        KEYA_ERROR = 6,
+        JD_PWM_MOTION = 7
     };
 
     KickoutMonitor();
@@ -95,6 +96,7 @@ private:
     bool checkPressureKickout();
     bool checkCurrentKickout();
     bool checkMotorSlipKickout();
+    bool checkJDPWMKickout();
 };
 
 #endif // KICKOUT_MONITOR_H

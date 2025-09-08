@@ -241,16 +241,18 @@ void SimpleWebManager::sendEventLoggerPage(EthernetClient& client) {
     String html = FPSTR(SIMPLE_EVENTLOGGER_PAGE);
     html.replace("%CSS_STYLES%", FPSTR(COMMON_CSS));
     
-    // EventLogger configuration is currently fixed - using default values
+    // Get actual EventLogger configuration
+    EventLogger* logger = EventLogger::getInstance();
+    EventConfig& config = logger->getConfig();
     
-    // Replace checkbox states
-    html.replace("%SERIAL_ENABLED%", "checked");  // Default to enabled
-    html.replace("%UDP_ENABLED%", "");  // Default to disabled
-    html.replace("%RATE_LIMIT_DISABLED%", "");  // Default to rate limiting on
+    // Replace checkbox states based on actual configuration
+    html.replace("%SERIAL_ENABLED%", config.enableSerial ? "checked" : "");
+    html.replace("%UDP_ENABLED%", config.enableUDP ? "checked" : "");
+    html.replace("%RATE_LIMIT_DISABLED%", config.disableRateLimit ? "checked" : "");
     
-    // Build level options - default to INFO (level 3)
-    html.replace("%SERIAL_LEVEL_OPTIONS%", buildLevelOptions(3));
-    html.replace("%UDP_LEVEL_OPTIONS%", buildLevelOptions(3));
+    // Build level options with actual configured levels
+    html.replace("%SERIAL_LEVEL_OPTIONS%", buildLevelOptions(config.serialLevel));
+    html.replace("%UDP_LEVEL_OPTIONS%", buildLevelOptions(config.udpLevel));
     
     SimpleHTTPServer::send(client, 200, "text/html", html);
 }
@@ -333,14 +335,17 @@ void SimpleWebManager::handleApiStatus(EthernetClient& client) {
 }
 
 void SimpleWebManager::handleEventLoggerConfig(EthernetClient& client, const String& method) {
+    EventLogger* logger = EventLogger::getInstance();
+    
     if (method == "GET") {
         // Return current configuration
+        EventConfig& config = logger->getConfig();
         StaticJsonDocument<256> doc;
-        doc["serialEnabled"] = true;  // EventLogger serial is always enabled
-        doc["serialLevel"] = 3;  // INFO
-        doc["udpEnabled"] = false;
-        doc["udpLevel"] = 3;  // INFO
-        doc["rateLimitDisabled"] = false;
+        doc["serialEnabled"] = config.enableSerial;
+        doc["serialLevel"] = config.serialLevel;
+        doc["udpEnabled"] = config.enableUDP;
+        doc["udpLevel"] = config.udpLevel;
+        doc["rateLimitDisabled"] = config.disableRateLimit;
         
         String json;
         serializeJson(doc, json);
@@ -350,24 +355,53 @@ void SimpleWebManager::handleEventLoggerConfig(EthernetClient& client, const Str
         // Read POST body
         String body = readPostBody(client);
         
+        LOG_INFO(EventSource::NETWORK, "EventLogger POST body: %s", body.c_str());
+        
         // Parse JSON
         StaticJsonDocument<256> doc;
         DeserializationError error = deserializeJson(doc, body);
         
         if (error) {
+            LOG_ERROR(EventSource::NETWORK, "EventLogger JSON parse error: %s", error.c_str());
             SimpleHTTPServer::sendJSON(client, "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
             return;
         }
         
-        // EventLogger settings are currently fixed - changes not persisted
-        bool serialEnabled = doc["serialEnabled"] | true;
-        bool udpEnabled = doc["udpEnabled"] | false;
-        int serialLevel = doc["serialLevel"] | 3;
-        int udpLevel = doc["udpLevel"] | 3;
-        bool rateLimitDisabled = doc["rateLimitDisabled"] | false;
+        // Apply EventLogger settings
+        if (doc.containsKey("serialEnabled")) {
+            bool enabled = doc["serialEnabled"];
+            logger->enableSerial(enabled);
+            LOG_INFO(EventSource::NETWORK, "Set serial enabled: %d", enabled);
+        }
+        if (doc.containsKey("udpEnabled")) {
+            bool enabled = doc["udpEnabled"];
+            logger->enableUDP(enabled);
+            LOG_INFO(EventSource::NETWORK, "Set UDP enabled: %d", enabled);
+        }
+        if (doc.containsKey("serialLevel")) {
+            int level = doc["serialLevel"];
+            logger->setSerialLevel(static_cast<EventSeverity>(level));
+            LOG_INFO(EventSource::NETWORK, "Set serial level: %d", level);
+        }
+        if (doc.containsKey("udpLevel")) {
+            int level = doc["udpLevel"];
+            logger->setUDPLevel(static_cast<EventSeverity>(level));
+            LOG_INFO(EventSource::NETWORK, "Set UDP level: %d", level);
+        }
+        if (doc.containsKey("rateLimitDisabled")) {
+            bool disabled = doc["rateLimitDisabled"];
+            logger->setRateLimitEnabled(!disabled);
+            LOG_INFO(EventSource::NETWORK, "Set rate limit disabled: %d", disabled);
+        }
         
-        LOG_INFO(EventSource::NETWORK, "EventLogger config: Serial=%d/%d, UDP=%d/%d, RateLimit=%d", 
-                 serialEnabled, serialLevel, udpEnabled, udpLevel, rateLimitDisabled);
+        // Force save after all changes
+        logger->saveConfig();
+        
+        EventConfig& config = logger->getConfig();
+        LOG_INFO(EventSource::NETWORK, "EventLogger config after update: Serial=%d/%d, UDP=%d/%d, RateLimit=%d", 
+                 config.enableSerial, config.serialLevel, 
+                 config.enableUDP, config.udpLevel, 
+                 config.disableRateLimit);
         
         SimpleHTTPServer::sendJSON(client, "{\"status\":\"saved\"}");
         
@@ -455,6 +489,8 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         doc["sensorFusion"] = false;  // Sensor fusion not implemented yet
         doc["pwmBrakeMode"] = config->getPWMBrakeMode();
         doc["encoderType"] = config->getEncoderType();
+        doc["jdPWMEnabled"] = config->getJDPWMEnabled();
+        doc["jdPWMSensitivity"] = config->getJDPWMSensitivity();
         
         String json;
         serializeJson(doc, json);
@@ -478,18 +514,26 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         bool sensorFusion = doc["sensorFusion"] | false;
         bool pwmBrakeMode = doc["pwmBrakeMode"] | false;
         int encoderType = doc["encoderType"] | 1;
+        bool jdPWMEnabled = doc["jdPWMEnabled"] | false;
+        int jdPWMSensitivity = doc["jdPWMSensitivity"] | 5;
         
         // Save to ConfigManager
         ConfigManager* config = ConfigManager::getInstance();
         config->setGPSPassThrough(udpPassthrough);
         config->setPWMBrakeMode(pwmBrakeMode);
         config->setEncoderType(encoderType);
+        config->setJDPWMEnabled(jdPWMEnabled);
+        config->setJDPWMSensitivity(jdPWMSensitivity);
         // Sensor fusion configuration not implemented yet
         
         // Save to EEPROM
-        config->saveTurnSensorConfig();  // This saves encoder type
+        config->saveTurnSensorConfig();  // This saves encoder type and JD PWM settings
         config->saveSteerConfig();       // This saves PWM brake mode
         config->saveGPSConfig();         // This saves GPS passthrough
+        
+        // Apply JD PWM mode change to ADProcessor
+        extern ADProcessor adProcessor;
+        adProcessor.setJDPWMMode(jdPWMEnabled);
         
         // Update GNSSProcessor with new passthrough setting
         gnssProcessor.setUDPPassthrough(udpPassthrough);
@@ -760,11 +804,13 @@ String SimpleWebManager::readPostBody(EthernetClient& client) {
 
 String SimpleWebManager::buildLevelOptions(uint8_t selectedLevel) {
     String options;
-    const char* levels[] = {"OFF", "ERROR", "WARNING", "INFO", "DEBUG", "VERBOSE"};
+    // Use proper syslog severity levels
+    const char* levels[] = {"EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG"};
+    const uint8_t values[] = {0, 1, 2, 3, 4, 5, 6, 7};
     
-    for (uint8_t i = 0; i < 6; i++) {
-        options += "<option value='" + String(i) + "'";
-        if (i == selectedLevel) {
+    for (uint8_t i = 0; i < 8; i++) {
+        options += "<option value='" + String(values[i]) + "'";
+        if (values[i] == selectedLevel) {
             options += " selected";
         }
         options += ">" + String(levels[i]) + "</option>";

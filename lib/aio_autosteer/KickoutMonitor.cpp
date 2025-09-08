@@ -151,6 +151,14 @@ void KickoutMonitor::process() {
     if (!kickoutActive) {
         // Not currently in kickout - check if we should trigger one
         
+        // Debug JD PWM status periodically
+        static uint32_t lastJDDebug = 0;
+        if (configMgr->getJDPWMEnabled() && (millis() - lastJDDebug > 2000)) {
+            LOG_DEBUG(EventSource::AUTOSTEER, "JD_PWM_KICKOUT: enabled=%d, motion_as_pressure=%u (AOG handles threshold), isKeyaMotor=%d",
+                      configMgr->getJDPWMEnabled(), lastPressureReading, isKeyaMotor);
+            lastJDDebug = millis();
+        }
+        
         // External sensor checks - NOT for Keya motors
         if (!isKeyaMotor && configMgr->getShaftEncoder()) {
             // Encoder is enabled for non-Keya motors
@@ -167,7 +175,21 @@ void KickoutMonitor::process() {
                 }
             }
         }
-        else if (!isKeyaMotor && configMgr->getPressureSensor() && checkPressureKickout()) {
+        else if (!isKeyaMotor && configMgr->getJDPWMEnabled() && checkJDPWMKickout()) {
+            kickoutActive = true;
+            kickoutReason = JD_PWM_MOTION;
+            kickoutTime = millis();
+            
+            LOG_WARNING(EventSource::AUTOSTEER, "JD_PWM_KICKOUT: *** KICKOUT ACTIVATED ***");
+            LOG_WARNING(EventSource::AUTOSTEER, "KICKOUT: %s", getReasonString());
+            
+            // Notify motor driver using pressure sensor kickout type for compatibility
+            if (motorDriver) {
+                motorDriver->handleKickout(KickoutType::PRESSURE_SENSOR, lastPressureReading);
+            }
+        }
+        else if (!isKeyaMotor && configMgr->getPressureSensor() && !configMgr->getJDPWMEnabled() && checkPressureKickout()) {
+            LOG_DEBUG(EventSource::AUTOSTEER, "PRESSURE_KICKOUT: Regular pressure mode (JD PWM disabled)");
             kickoutActive = true;
             kickoutReason = PRESSURE_HIGH;
             kickoutTime = millis();
@@ -219,8 +241,14 @@ void KickoutMonitor::process() {
                 }
                 break;
                 
+            case JD_PWM_MOTION:
+                if (!isKeyaMotor && configMgr->getJDPWMEnabled() && checkJDPWMKickout()) {
+                    conditionsNormal = false;
+                }
+                break;
+                
             case PRESSURE_HIGH:
-                if (!isKeyaMotor && configMgr->getPressureSensor() && checkPressureKickout()) {
+                if (!isKeyaMotor && configMgr->getPressureSensor() && !configMgr->getJDPWMEnabled() && checkPressureKickout()) {
                     conditionsNormal = false;
                 }
                 break;
@@ -375,6 +403,26 @@ bool KickoutMonitor::checkMotorSlipKickout() {
     return false;
 }
 
+bool KickoutMonitor::checkJDPWMKickout() {
+    // In JD PWM mode, the motion value is already sent as pressure data
+    // AgOpenGPS will handle the kickout through its pressure threshold
+    // This function now only exists for logging purposes
+    
+    if (configMgr->getJDPWMEnabled()) {
+        // Debug output
+        static uint32_t lastDebugTime = 0;
+        uint32_t now = millis();
+        if (now - lastDebugTime > 1000) { // Debug every second
+            LOG_DEBUG(EventSource::AUTOSTEER, "JD_PWM_CHECK: motion_as_pressure=%u (AOG handles threshold)",
+                      lastPressureReading);
+            lastDebugTime = now;
+        }
+    }
+    
+    // Always return false - let pressure kickout handle it
+    return false;
+}
+
 void KickoutMonitor::clearKickout() {
     if (kickoutActive) {
         LOG_INFO(EventSource::AUTOSTEER, "KICKOUT: Cleared after %lu ms", 
@@ -405,6 +453,7 @@ const char* KickoutMonitor::getReasonString() const {
         case MOTOR_SLIP: return "Motor Slip";
         case KEYA_SLIP: return "Keya Motor Slip";
         case KEYA_ERROR: return "Keya Motor Error";
+        case JD_PWM_MOTION: return "JD PWM Motion Detected";
         default: return "Unknown";
     }
 }
@@ -416,9 +465,12 @@ uint8_t KickoutMonitor::getTurnSensorReading() const {
     bool hasEncoder = configMgr->getShaftEncoder();
     bool hasPressure = configMgr->getPressureSensor();
     bool hasCurrent = configMgr->getCurrentSensor();
+    bool hasJDPWM = configMgr->getJDPWMEnabled();
     
     if (hasEncoder) {
         sensorType = TurnSensorType::ENCODER;
+    } else if (hasJDPWM) {
+        sensorType = TurnSensorType::JD_PWM;
     } else if (hasPressure) {
         sensorType = TurnSensorType::PRESSURE;
     } else if (hasCurrent) {
@@ -430,6 +482,9 @@ uint8_t KickoutMonitor::getTurnSensorReading() const {
     switch (sensorType) {
         case TurnSensorType::ENCODER:
             return (uint8_t)min(encoderPulseCount, 255);
+            
+        case TurnSensorType::JD_PWM:
+            return (uint8_t)lastPressureReading;  // JD PWM motion value is stored in pressure reading
             
         case TurnSensorType::PRESSURE:
             return (uint8_t)lastPressureReading;
