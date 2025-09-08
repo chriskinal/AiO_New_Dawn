@@ -1,0 +1,23 @@
+diff --git a/lib/aio_navigation/NAVProcessor.cpp b/lib/aio_navigation/NAVProcessor.cpp
+index 1234567..abcdefg 100644
+--- a/lib/aio_navigation/NAVProcessor.cpp
++++ b/lib/aio_navigation/NAVProcessor.cpp
+@@ -389,11 +389,18 @@ void NAVProcessor::process() {
+     // Check if it's time to send a message
+     if (timeSinceLastMessage < MESSAGE_INTERVAL_MS) {
+         return;
+     }
+     
+-    timeSinceLastMessage = 0;
++    // Check if we have new GPS data since last send
++    if (!hasNewGPSData()) {
++        // No new GPS data, skip this cycle
++        return;
++    }
++    
++    intervalReached++;
++    timeSinceLastMessage -= MESSAGE_INTERVAL_MS;  // Preserve the overflow for accurate timing
+     
+     // Select and format appropriate message type
+     NavMessageType msgType = selectMessageType();
+     bool success = false;

@@ -379,7 +379,13 @@ void NAVProcessor::process() {
         return;
     }
     
-    timeSinceLastMessage = 0;
+    // Check if we have new GPS data since last send
+    if (!hasNewGPSData()) {
+        // No new GPS data, skip this cycle
+        return;
+    }
+    
+    timeSinceLastMessage -= MESSAGE_INTERVAL_MS;  // Preserve the overflow for accurate timing
     
     // Select and format appropriate message type
     NavMessageType msgType = selectMessageType();
