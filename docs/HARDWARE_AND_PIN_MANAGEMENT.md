@@ -83,7 +83,7 @@ Manages shared hardware resources:
 
 #### Other Pins
 - **Speed Pulse Output**: 9
-- **Buzzer**: 24
+- **Buzzer**: 36
 - **Ethernet Status LED**: Built into magjack
 
 ### Little Dawn Processor
