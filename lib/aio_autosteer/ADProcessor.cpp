@@ -241,7 +241,7 @@ void ADProcessor::process()
             }
             
             // Check if we have valid duty cycle data
-            // Actual observed range: 4% to 94% (90% total range)
+            // Full encoder range: 4% to 94% (90% total range)
             if (jdPWMDutyPercent >= 2.0f && jdPWMDutyPercent <= 96.0f && jdPWMPeriod > 0) {
                 // Store previous value before updating
                 if (jdPWMDutyPercentPrev == 0.0f) {
@@ -255,7 +255,7 @@ void ADProcessor::process()
                 
                 // Apply noise floor filter
                 // Tester observed: 0-5us variation when stationary (0-0.1% duty cycle)
-                // Actual motion: 6-56us change (0.12-1.12% duty cycle)
+                // Full range motion: 4-94% duty cycle (90% total range)
                 const float noiseFloor = 0.1f;  // 0.1% duty cycle = 5us at 200Hz
                 
                 if (motionPercent < noiseFloor) {
@@ -263,15 +263,17 @@ void ADProcessor::process()
                 }
                 
                 // Scale motion to 0-255 range
-                // Typical max observed motion ~1.12% (56us at 200Hz)
+                // Full encoder range: 4% to 94% (90% total range)
                 // Get sensitivity from config (1-10, where 10 is most sensitive)
                 extern ConfigManager configManager;
                 uint8_t sensitivity = configManager.getJDPWMSensitivity();
                 
-                // Map sensitivity 1-10 to motion scale 5.0-0.5
-                // Sensitivity 1 = 5% motion for full scale (least sensitive)
-                // Sensitivity 10 = 0.5% motion for full scale (most sensitive)
-                float motionScale = 5.5f - (sensitivity * 0.5f);
+                // Map sensitivity 1-10 to motion scale
+                // The encoder can vary across full 4-94% range (90% total)
+                // We need to scale duty cycle changes to kickout thresholds
+                // Sensitivity 1 = 20% duty change for full scale (least sensitive, requires more motion)
+                // Sensitivity 10 = 2% duty change for full scale (most sensitive, requires less motion)
+                float motionScale = 22.0f - (sensitivity * 2.0f);
                 
                 float sensorReading = (motionPercent / motionScale) * 255.0f;
                 sensorReading = min(sensorReading, 255.0f);

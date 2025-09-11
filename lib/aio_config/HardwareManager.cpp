@@ -1,5 +1,6 @@
 #include "HardwareManager.h"
 #include "EventLogger.h"
+#include "ConfigManager.h"
 
 // Static instance pointer
 HardwareManager *HardwareManager::instance = nullptr;
@@ -153,6 +154,40 @@ void HardwareManager::enableBuzzer()
 void HardwareManager::disableBuzzer()
 {
     digitalWrite(getBuzzerPin(), LOW);
+}
+
+void HardwareManager::performBuzzerTest()
+{
+    // Get buzzer volume setting from ConfigManager
+    extern ConfigManager configManager;
+    bool loudMode = configManager.getBuzzerLoudMode();
+    
+    if (loudMode) {
+        // Loud mode for field use - play multiple tones
+        LOG_INFO(EventSource::SYSTEM, "Playing LOUD buzzer test");
+        
+        // Play ascending tones
+        tone(getBuzzerPin(), 1000, 200);  // 1kHz for 200ms
+        delay(250);
+        tone(getBuzzerPin(), 1500, 200);  // 1.5kHz for 200ms
+        delay(250);
+        tone(getBuzzerPin(), 2000, 300);  // 2kHz for 300ms
+        delay(350);
+        
+        // Play descending tones
+        tone(getBuzzerPin(), 1500, 200);  // 1.5kHz for 200ms
+        delay(250);
+        tone(getBuzzerPin(), 1000, 300);  // 1kHz for 300ms
+        delay(350);
+    } else {
+        // Quiet mode for development - cricket-like click
+        LOG_INFO(EventSource::SYSTEM, "Playing quiet buzzer test");
+        tone(getBuzzerPin(), 4000, 5);  // 4kHz for 5ms - very quick click
+        delay(10);
+    }
+    
+    // Make sure buzzer is off
+    noTone(getBuzzerPin());
 }
 
 void HardwareManager::enableSteerMotor()

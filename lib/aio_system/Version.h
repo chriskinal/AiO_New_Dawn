@@ -2,7 +2,7 @@
 #define VERSION_H
 
 // AiO New Dawn firmware version
-#define FIRMWARE_VERSION "1.0.24-beta-NMEA" // Clarified JD PWM sensitivity vs set point terminology
+#define FIRMWARE_VERSION "1.0.36-beta" // Shortened quiet buzzer to 4kHz, 5ms for quick click
 
 // Teensy board type for OTA identification
 #define TEENSY_BOARD_TYPE "Teensy41"

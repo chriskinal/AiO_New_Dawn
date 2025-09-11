@@ -21,6 +21,11 @@ NAVProcessor::NAVProcessor() {
     
     // Initialize timing
     lastGPSMessageTime = 0;
+    lastGPSUpdateTime = 0;
+    
+    // Initialize PAOGI duplicate detection
+    lastPAOGILatitude = 0.0;
+    lastPAOGILongitude = 0.0;
     
     // Clear message buffer
     memset(messageBuffer, 0, BUFFER_SIZE);
@@ -251,6 +256,22 @@ bool NAVProcessor::formatPAOGIMessage() {
     }
     
     const auto& gnssData = gnssProcessor.getData();
+    
+    // Check for duplicate position
+    if (gnssData.latitude == lastPAOGILatitude && 
+        gnssData.longitude == lastPAOGILongitude && 
+        lastPAOGILatitude != 0.0) {  // Don't log on first valid position
+        static uint32_t lastDuplicateLog = 0;
+        if (millis() - lastDuplicateLog > 5000) {  // Log every 5 seconds max
+            lastDuplicateLog = millis();
+            LOG_WARNING(EventSource::GNSS, "PAOGI: Duplicate position detected: %.8f, %.8f", 
+                       gnssData.latitude, gnssData.longitude);
+        }
+    }
+    
+    // Update last position
+    lastPAOGILatitude = gnssData.latitude;
+    lastPAOGILongitude = gnssData.longitude;
     
     // Use cached NMEA coordinates - no conversion needed!
     double latNMEA = gnssData.latitudeNMEA;

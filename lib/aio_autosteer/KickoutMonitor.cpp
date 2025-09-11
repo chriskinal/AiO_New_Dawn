@@ -175,7 +175,8 @@ void KickoutMonitor::process() {
                 }
             }
         }
-        else if (!isKeyaMotor && configMgr->getJDPWMEnabled() && checkJDPWMKickout()) {
+        else if (!isKeyaMotor && configMgr->getJDPWMEnabled() && checkPressureKickout()) {
+            // JD PWM mode uses pressure kickout mechanism since motion is sent as pressure
             kickoutActive = true;
             kickoutReason = JD_PWM_MOTION;
             kickoutTime = millis();

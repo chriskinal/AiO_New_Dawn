@@ -32,6 +32,10 @@ private:
     // Track last GPS update time to detect duplicates
     uint32_t lastGPSUpdateTime;
     
+    // Track last sent PAOGI position for duplicate detection
+    double lastPAOGILatitude;
+    double lastPAOGILongitude;
+    
     // Private constructor for singleton
     NAVProcessor();
     

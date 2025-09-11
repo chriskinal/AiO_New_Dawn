@@ -147,6 +147,10 @@ private:
 
     // Configuration
     bool enableNoiseFilter;
+    
+    // GGA duplicate detection
+    double lastGGALatitude;
+    double lastGGALongitude;
     bool enableDebug;
     
     // UBX parser for GPS2 RELPOSNED

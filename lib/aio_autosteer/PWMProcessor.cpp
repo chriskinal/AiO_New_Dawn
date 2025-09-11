@@ -1,6 +1,8 @@
 #include "PWMProcessor.h"
 #include "EventLogger.h"
 #include "HardwareManager.h"
+#include "GNSSProcessor.h"
+#include "AutosteerProcessor.h"
 
 // Static instance
 PWMProcessor* PWMProcessor::instance = nullptr;
@@ -10,7 +12,8 @@ PWMProcessor::PWMProcessor() :
     pulseDuty(0.5f),        // 50% duty cycle default
     pulseEnabled(false),
     currentSpeedKmh(0.0f),
-    pulsesPerMeter(1.0f)    // Default 1 pulse per meter
+    pulsesPerMeter(1.0f),   // Default 1 pulse per meter
+    lastSpeedUpdate(0)
 {
     instance = this;
 }
@@ -60,6 +63,39 @@ bool PWMProcessor::init()
     LOG_INFO(EventSource::AUTOSTEER, "PWM Processor initialization SUCCESS");
     
     return true;
+}
+
+void PWMProcessor::process()
+{
+    // Update PWM speed pulse from GPS every 200ms
+    if (millis() - lastSpeedUpdate > 200)  // Update every 200ms like V6-NG
+    {
+        lastSpeedUpdate = millis();
+        
+        if (pulseEnabled)
+        {
+            float speedKmh = 0.0f;
+            
+            // Use actual GPS speed
+            extern GNSSProcessor gnssProcessor;
+            const auto &gpsData = gnssProcessor.getData();
+            if (gpsData.hasVelocity)
+            {
+                // Convert knots to km/h
+                speedKmh = gpsData.speedKnots * 1.852f;
+            }
+            else
+            {
+                // Fallback to PGN 254 speed if GPS velocity is not available
+                // This is useful for systems that are running in SIM mode
+                // - could also always use PGN254 speed as it returns GPS speed if available
+                speedKmh = AutosteerProcessor::getInstance()->getVehicleSpeed();
+            }
+            
+            // Set the speed
+            setSpeedKmh(speedKmh);
+        }
+    }
 }
 
 void PWMProcessor::setSpeedPulseHz(float hz)

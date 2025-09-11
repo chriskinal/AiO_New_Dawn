@@ -75,8 +75,37 @@ const char SIMPLE_OTA_UPDATE_PAGE_FIXED[] PROGMEM = R"rawliteral(
             min-height: 100px;
             white-space: pre-wrap;
         }
+        #file {
+            width: 100%;
+            max-width: 500px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .file-info {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e3f2fd;
+            border-radius: 5px;
+            font-family: monospace;
+            word-break: break-all;
+        }
     </style>
     <script>
+        function displayFileName() {
+            const fileInput = document.getElementById('file');
+            const fileInfo = document.getElementById('fileInfo');
+            const file = fileInput.files[0];
+            
+            if (file) {
+                fileInfo.innerHTML = '<strong>Selected file:</strong> ' + file.name;
+                fileInfo.style.display = 'block';
+            } else {
+                fileInfo.style.display = 'none';
+            }
+        }
+        
         function uploadFile() {
             const fileInput = document.getElementById('file');
             const file = fileInput.files[0];
@@ -163,10 +192,11 @@ const char SIMPLE_OTA_UPDATE_PAGE_FIXED[] PROGMEM = R"rawliteral(
         <h2>Select Firmware File</h2>
         
         <div class='form-group'>
-            <input type='file' id='file' name='firmware' accept='.hex' required>
+            <input type='file' id='file' name='firmware' accept='.hex' required onchange='displayFileName()'>
             <div class='help-text'>
                 Select a .hex firmware file built for Teensy 4.1
             </div>
+            <div id='fileInfo' class='file-info' style='display: none;'></div>
         </div>
         
         <div id='feedback'></div>

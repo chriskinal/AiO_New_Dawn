@@ -19,7 +19,9 @@ GNSSProcessor::GNSSProcessor() : bufferIndex(0),
                                  enableDebug(false),
                                  ubxParser(nullptr),
                                  udpPassthroughEnabled(false),
-                                 processingPaused(false)
+                                 processingPaused(false),
+                                 lastGGALatitude(0.0),
+                                 lastGGALongitude(0.0)
 {
 
     // Initialize data structures
@@ -499,7 +501,7 @@ bool GNSSProcessor::processMessage()
     if (processed)
     {
         // Valid GPS message received
-        gpsData.lastUpdateTime = millis();
+        // Note: lastUpdateTime is now set by individual message parsers
         
         // Debug log to track hasDualHeading status after each message
         static uint32_t lastTraceTime = 0;
@@ -821,14 +823,14 @@ bool GNSSProcessor::parseINSPVAA()
     // Field 12: Latitude (degrees)
     if (fieldRefs[12].length > 0)
     {
-        gpsData.latitude = parseFloatZeroCopy(fieldRefs[12]);
+        gpsData.latitude = parseDoubleZeroCopy(fieldRefs[12]);
         gpsData.hasPosition = true;
     }
     
     // Field 13: Longitude (degrees)
     if (fieldRefs[13].length > 0)
     {
-        gpsData.longitude = parseFloatZeroCopy(fieldRefs[13]);
+        gpsData.longitude = parseDoubleZeroCopy(fieldRefs[13]);
     }
     
     // Cache NMEA format coordinates
@@ -1074,7 +1076,7 @@ bool GNSSProcessor::parseINSPVAXA()
     // Field 12: Latitude (degrees)
     if (fieldRefs[12].length > 0)
     {
-        gpsData.latitude = parseFloatZeroCopy(fieldRefs[12]);
+        gpsData.latitude = parseDoubleZeroCopy(fieldRefs[12]);
         gpsData.hasPosition = insValid && 
                              (gpsData.latitude != 0.0 || gpsData.longitude != 0.0);
     }
@@ -1082,7 +1084,7 @@ bool GNSSProcessor::parseINSPVAXA()
     // Field 13: Longitude (degrees)
     if (fieldRefs[13].length > 0)
     {
-        gpsData.longitude = parseFloatZeroCopy(fieldRefs[13]);
+        gpsData.longitude = parseDoubleZeroCopy(fieldRefs[13]);
     }
     
     // Cache NMEA format coordinates
@@ -1568,6 +1570,22 @@ bool GNSSProcessor::parseGGAZeroCopy() {
     gpsData.isValid = gpsData.hasPosition;  // GGA messages need valid flag
     gpsData.lastUpdateTime = millis();
     gpsData.messageTypeMask |= (1 << 0);  // Set GGA bit
+    
+    // Check for duplicate position
+    if (gpsData.latitude == lastGGALatitude && 
+        gpsData.longitude == lastGGALongitude && 
+        lastGGALatitude != 0.0) {  // Don't log on first valid position
+        static uint32_t lastDuplicateLog = 0;
+        if (millis() - lastDuplicateLog > 5000) {  // Log every 5 seconds max
+            lastDuplicateLog = millis();
+            LOG_WARNING(EventSource::GNSS, "GGA: Duplicate position detected: %.8f, %.8f", 
+                       gpsData.latitude, gpsData.longitude);
+        }
+    }
+    
+    // Update last position
+    lastGGALatitude = gpsData.latitude;
+    lastGGALongitude = gpsData.longitude;
 
     if (enableDebug) {
         logDebug("GGA processed (zero-copy)");
@@ -1662,7 +1680,7 @@ bool GNSSProcessor::parseVTGZeroCopy() {
     // We use knots, but can validate if both are present
 
     // Set status flags
-    gpsData.lastUpdateTime = millis();
+    // VTG doesn't contain position data, so don't update lastUpdateTime
     gpsData.messageTypeMask |= (1 << 2);  // Set VTG bit
 
     if (enableDebug) {
@@ -1723,7 +1741,7 @@ bool GNSSProcessor::parseHPRZeroCopy() {
     
     // Set valid and update time
     gpsData.isValid = true;  // HPR messages are valid even without position
-    gpsData.lastUpdateTime = millis();
+    // HPR doesn't contain position data, so don't update lastUpdateTime
     gpsData.messageTypeMask |= (1 << 4);  // Set HPR bit
 
     // Debug log
