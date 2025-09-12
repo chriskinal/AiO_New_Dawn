@@ -131,14 +131,36 @@ void LittleDawnInterface::sendHandshakeRequest() {
 
 // Process incoming data from Little Dawn
 void LittleDawnInterface::processIncomingData() {
-    static uint8_t rxBuffer[64];
-    static uint8_t rxIndex = 0;
+    static uint8_t rxBuffer[64], rxBufferForUDP[64];
+    static uint8_t rxIndex = 0, rxIndexForUDP = 0;
     static enum { WAIT_ID, WAIT_LEN, WAIT_DATA, WAIT_CHECKSUM } rxState = WAIT_ID;
     static uint8_t msgId = 0;
     static uint8_t msgLen = 0;
     
     while (SerialESP32.available()) {
         uint8_t byte = SerialESP32.read();
+        //get the complete sentence to foreward it
+        rxBufferForUDP[rxIndexForUDP] = byte;
+        rxIndexForUDP++;
+
+        // Check for CRLF termination
+        if (rxIndexForUDP >= 2 &&
+            rxBufferForUDP[rxIndexForUDP - 2] == 13 &&
+            rxBufferForUDP[rxIndexForUDP - 1] == 10)
+        {
+            //foreward sentence to AgIO via UDP, no checking = every data everywhere
+            sendUDPbytes(rxBufferForUDP, rxIndexForUDP - 2); //-2 to not send CRLF
+            rxIndexForUDP = 0;
+            //when sentence ended with CRLF, then no LittleDawn message can be in it
+            rxIndex = 0; //reset also the other buffer
+            rxState = WAIT_ID; //reset state machine
+        }
+
+        // Prevent buffer overflow
+        if (rxIndexForUDP >= sizeof(rxBufferForUDP))
+        {
+            rxIndexForUDP = 0;
+        }        
         
         switch (rxState) {
             case WAIT_ID:
@@ -149,8 +171,8 @@ void LittleDawnInterface::processIncomingData() {
                 
             case WAIT_LEN:
                 msgLen = byte;
-                if (msgLen > sizeof(rxBuffer)) {
-                    // Invalid length, reset
+                if (msgLen > sizeof(rxBuffer) || ((rxBufferForUDP[0] == 128 && rxBufferForUDP[1] == 129))) {
+                    // Invalid length or PGN for AgIO, reset
                     rxState = WAIT_ID;
                 } else {
                     rxState = (msgLen > 0) ? WAIT_DATA : WAIT_CHECKSUM;
