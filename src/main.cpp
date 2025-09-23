@@ -182,8 +182,8 @@ void taskGPS2Serial() {
     enum State { WAITING, IN_SENTENCE, COUNTING, CHECKSUM1, CHECKSUM2 };
     static State state = WAITING;
     static uint8_t decimalCount = 0, checkSum = 0, charIndex = 0;
-    //static uint8_t buffer[128];
-    //static uint8_t bufIndex = 0;
+    static uint16_t RS232TXLowWaterLevel = 1024;
+
     charIndex++;
 
     switch (state) {
@@ -192,8 +192,6 @@ void taskGPS2Serial() {
           state = IN_SENTENCE;
           checkSum = 0;
           charIndex = 0;
-          //Serial.write(buffer, bufIndex);
-          //bufIndex = 0;
         }
         SerialRS232.write(b);  // forward byte from UM982 com2 (GPS2) to RS232 for GS3 2630 harvest documentation
         //Serial.write(b);      // also echo to main serial for logging
@@ -250,7 +248,12 @@ void taskGPS2Serial() {
         //Serial.printf("Unexpected state in GPS2 NMEA forwarding precision processing state machine!\r\n");
     }
 
-    //buffer[bufIndex++] = b;
+    /*if (SerialRS232.availableForWrite() < RS232TXLowWaterLevel) {
+      RS232TXLowWaterLevel = SerialRS232.availableForWrite();
+      //Serial.printf("\r\n%i RS232 TX low water mark: %i", millis(), RS232TXLowWaterLevel);
+    }
+    Serial.printf("\r\n%i: %i (%i)", millis(), SerialRS232.availableForWrite(), RS232TXLowWaterLevel);*/
+
   }
 }
 

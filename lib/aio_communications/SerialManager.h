@@ -24,7 +24,7 @@ private:
     uint8_t gps2RxBuffer[128];
     uint8_t gps2TxBuffer[256];
     uint8_t radioRxBuffer[64];
-    uint8_t rs232TxBuffer[256];
+    uint8_t rs232TxBuffer[512];
     uint8_t esp32RxBuffer[256];
     uint8_t esp32TxBuffer[256];
 
@@ -40,7 +40,7 @@ public:
     static const uint16_t GPS_BUFFER_SIZE = 128;    // GPS1rxbuffer size from pcb.h
     static const uint16_t GPS_TX_BUFFER_SIZE = 256; // GPS1txbuffer size from pcb.h
     static const uint16_t RADIO_BUFFER_SIZE = 64;
-    static const uint16_t RS232_BUFFER_SIZE = 256;
+    static const uint16_t RS232_BUFFER_SIZE = 512;
     static const uint16_t ESP32_BUFFER_SIZE = 256;
 
     // Baud rates (matching pcb.h values)
