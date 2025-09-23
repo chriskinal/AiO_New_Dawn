@@ -175,7 +175,82 @@ void taskGPS1Serial() {
 void taskGPS2Serial() {
   if (SerialGPS2.available()) {
     uint8_t b = SerialGPS2.read();
-    gnssProcessor.processUBXByte(b);
+    //gnssProcessor.processUBXByte(b);
+    //SerialRS232.write(b);  // forward complete UM982 com2 to RS232 for GS3 2630 harvest documentation
+
+    // Refactored GPS2 NMEA forwarding to handle decimal precision and checksum processing
+    enum State { WAITING, IN_SENTENCE, COUNTING, CHECKSUM1, CHECKSUM2 };
+    static State state = WAITING;
+    static uint8_t decimalCount = 0, checkSum = 0, charIndex = 0;
+    //static uint8_t buffer[128];
+    //static uint8_t bufIndex = 0;
+    charIndex++;
+
+    switch (state) {
+      case WAITING:
+        if (b == '$') {
+          state = IN_SENTENCE;
+          checkSum = 0;
+          charIndex = 0;
+          //Serial.write(buffer, bufIndex);
+          //bufIndex = 0;
+        }
+        SerialRS232.write(b);  // forward byte from UM982 com2 (GPS2) to RS232 for GS3 2630 harvest documentation
+        //Serial.write(b);      // also echo to main serial for logging
+        break;
+
+      case IN_SENTENCE:
+        if (b == '.') {
+          state = COUNTING;
+          decimalCount = 0;
+          checkSum ^= b;
+        } else if (b == '*') {
+          state = CHECKSUM1;  // Start of checksum, ignore the next 1-2 bytes, up to '\n' or '\r'
+        } else if (b == 'N' && charIndex == 2) { // NMEA sentence starting with $GN
+          b = 'P';  // We have $GN - change to $GP for compatibility with older software
+          checkSum ^= b;
+        } else {
+          checkSum ^= b;
+        }
+        SerialRS232.write(b);
+        //Serial.write(b);      // also echo to main serial for logging
+        break;
+
+      case COUNTING:
+        if (b >= '0' && b <= '9') {
+          decimalCount++;
+          if (decimalCount <= 6) {
+            SerialRS232.write(b);
+            //Serial.write(b);      // also echo to main serial for logging
+            checkSum ^= b;
+          }
+          else {
+            // do nothing, drop the digits
+          }
+        } else {  // byte is not a numerical digit so we go back to watching for the next '.'
+          state = IN_SENTENCE;
+          SerialRS232.write(b);
+          //Serial.write(b);      // also echo to main serial for logging
+          checkSum ^= b;
+        }
+        break;
+
+      case CHECKSUM1:
+        SerialRS232.print(checkSum, HEX);  // write the checksum character
+        //Serial.print(checkSum, HEX);      // also echo to main serial for logging
+        state = CHECKSUM2;
+        break;
+
+      case CHECKSUM2: // just to skip 2nd incoming checksum character
+        state = WAITING;
+        break;
+
+      default:
+        state = WAITING;
+        //Serial.printf("Unexpected state in GPS2 NMEA forwarding precision processing state machine!\r\n");
+    }
+
+    //buffer[bufIndex++] = b;
   }
 }
 
