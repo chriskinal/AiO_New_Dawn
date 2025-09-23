@@ -1,6 +1,11 @@
 #include "CommandHandler.h"
 #include "ConfigManager.h"
 #include "HardwareManager.h"
+#include "SimpleScheduler/SimpleScheduler.h"
+
+// External function declarations
+extern void toggleLoopTiming();
+extern void toggleProcessTiming();
 
 // Static instance pointer
 CommandHandler* CommandHandler::instance = nullptr;
@@ -122,6 +127,11 @@ void CommandHandler::handleCommand(char cmd) {
         case 'L':
             toggleLoopTiming();
             break;
+
+        case 'p':  // Process timing diagnostics
+        case 'P':
+            toggleProcessTiming();
+            break;
             
         case 'b':  // Buzzer test
         case 'B':
@@ -143,7 +153,15 @@ void CommandHandler::handleCommand(char cmd) {
                              configManager.getBuzzerLoudMode() ? "LOUD (field use)" : "QUIET (development)");
             }
             break;
-            
+
+        case 'c':  // Show scheduler status
+        case 'C':
+            {
+                extern SimpleScheduler scheduler;
+                scheduler.printStatus();
+            }
+            break;
+
         case '?':
         case 'h':
         case 'H':
@@ -169,8 +187,10 @@ void CommandHandler::showMenu() {
     Serial.print("\r\nS - Show statistics");
     Serial.print("\r\nR - Reset event counter");
     Serial.print("\r\nL - Toggle loop timing diagnostics");
+    Serial.print("\r\nP - Toggle process timing diagnostics");
     Serial.print("\r\nB - Test buzzer");
     Serial.print("\r\nV - Toggle buzzer volume (loud/quiet)");
+    Serial.print("\r\nC - Show scheduler status");
     Serial.print("\r\n? - Show this menu");
     Serial.print("\r\n=========================\r\n");
 }

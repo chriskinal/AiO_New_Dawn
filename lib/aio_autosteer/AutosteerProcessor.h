@@ -45,9 +45,7 @@ private:
     uint32_t lastButtonDebounceTime = 0;  // Debounce timer
     static constexpr uint32_t DEBOUNCE_DELAY = 50; // 50ms debounce
     
-    // Autosteer loop timing
-    uint32_t lastLoopTime = 0;           // Timer for 100Hz autosteer loop
-    static constexpr uint32_t LOOP_TIME = 10; // 10ms = 100Hz
+    // Autosteer loop timing - Now handled by SimpleScheduler at 100Hz
     
     // Steer state management
     uint8_t steerState = 1;              // 0 = steering active, 1 = steering inactive

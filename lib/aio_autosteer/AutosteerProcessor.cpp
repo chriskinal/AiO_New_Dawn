@@ -166,14 +166,7 @@ void AutosteerProcessor::initializeFusion() {
 }
 
 void AutosteerProcessor::process() {
-    // Run autosteer loop at 100Hz
-    uint32_t currentTime = millis();
-    if (currentTime - lastLoopTime < LOOP_TIME) {
-        return;  // Not time yet
-    }
-    lastLoopTime = currentTime;
-    
-    // === 100Hz AUTOSTEER LOOP STARTS HERE ===
+    // === 100Hz AUTOSTEER LOOP (called by SimpleScheduler) ===
     
     // Track link state for down detection
     static bool previousLinkState = true;
@@ -188,7 +181,7 @@ void AutosteerProcessor::process() {
     
     // Update Virtual WAS if enabled
     if (wheelAngleFusionPtr && configManager.getINSUseFusion()) {
-        float dt = LOOP_TIME / 1000.0f;  // Convert to seconds
+        float dt = 10.0f / 1000.0f;  // 10ms = 0.01 seconds (100Hz from SimpleScheduler)
         wheelAngleFusionPtr->update(dt);
     }
     

@@ -13,7 +13,7 @@ private:
     
     bool enabled = false;
     int16_t targetPWM = 0;
-    uint32_t lastSendTime = 0;
+    // Timing now handled by SimpleScheduler at 50Hz
     
     // Heartbeat-based feedback (from 0x07000001)
     float actualRPM = 0.0f;
@@ -73,16 +73,12 @@ public:
     }
     
     void process() override {
-        // Check for CAN messages periodically - Keya sends at 100Hz (every 10ms)
-        // Check every 2ms to ensure we don't miss messages (5x oversampling)
-        static uint32_t lastCANCheck = 0;
-        if (millis() - lastCANCheck >= 2) {
-            lastCANCheck = millis();
-            checkCANMessages();
-        }
-        
-        // Send commands in rotation every 20ms
-        if (millis() - lastSendTime >= 20) {
+        // Now called by SimpleScheduler at 50Hz (20ms)
+
+        // Check for incoming CAN messages
+        checkCANMessages();
+
+        // Send commands (scheduler ensures 20ms spacing)
             CAN_message_t msg;
             msg.id = 0x06000001;
             msg.flags.extended = 1;
@@ -165,8 +161,6 @@ public:
                 sendDisable = !sendDisable;
             }
             
-            lastSendTime = millis();
-        }
     }
     
     MotorStatus getStatus() const override {

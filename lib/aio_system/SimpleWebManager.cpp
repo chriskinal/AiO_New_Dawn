@@ -16,15 +16,18 @@
 #include "GNSSProcessor.h"
 #include "web_pages/CommonStyles.h"  // Common CSS
 #include "web_pages/SimpleDeviceSettingsNoReplace.h"  // Device settings without replacements
-#include "web_pages/SimpleHomePage.h"  // New simplified home page
-#include "web_pages/SimpleEventLoggerPage.h"  // Event logger page
-#include "web_pages/SimpleNetworkPage.h"  // Simple network settings page
-#include "web_pages/SimpleAnalogWorkSwitchPage.h"  // Analog work switch page
-#include "web_pages/SimpleOTAPageFixed.h"  // Fixed OTA update page
-#include "web_pages/SimpleUM98xConfigPage.h"  // UM98x GPS configuration page
+#include "web_pages/TouchFriendlyEventLoggerPage.h"  // Touch-friendly event logger page
+#include "web_pages/TouchFriendlyAnalogWorkSwitchPage.h"  // Touch-friendly analog work switch page
+#include "web_pages/TouchFriendlyOTAPage.h"  // Touch-friendly OTA update page
+#include "web_pages/TouchFriendlyGPSConfigPage.h"  // Touch-friendly GPS configuration page
+#include "web_pages/TouchFriendlyHomePage.h"  // Touch-friendly interface
+#include "web_pages/TouchFriendlyStyles.h"  // Touch-friendly CSS
+#include "web_pages/TouchFriendlyDeviceSettingsPage.h"  // Touch-friendly device settings
+#include "web_pages/TouchFriendlyNetworkPage.h"  // Touch-friendly network settings
+#include "web_pages/TouchFriendlyAnalogWorkSwitchPage.h"  // Touch-friendly analog work switch
 #include <ArduinoJson.h>
 #include <QNEthernet.h>
-#include "LittleDawnInterface.h"
+#include "ESP32Interface.h"
 #include "UM98xManager.h"
 
 using namespace qindesign::network;
@@ -36,11 +39,10 @@ using namespace qindesign::network;
 extern EncoderProcessor* encoderProcessor;
 extern GNSSProcessor gnssProcessor;
 
-SimpleWebManager::SimpleWebManager() : 
+SimpleWebManager::SimpleWebManager() :
     isRunning(false),
     currentLanguage(WebLanguage::ENGLISH),
-    systemReady(false),
-    lastTelemetryUpdate(0) {
+    systemReady(false) {
 }
 
 SimpleWebManager::~SimpleWebManager() {
@@ -87,14 +89,21 @@ void SimpleWebManager::stop() {
 }
 
 void SimpleWebManager::handleClient() {
+    // Now called by SimpleScheduler at 100Hz
     httpServer.handleClient();
     telemetryWS.handleClients();
 }
 
 void SimpleWebManager::setupRoutes() {
-    // Home page
+    // Home page - now using touch-friendly interface
     httpServer.on("/", [this](EthernetClient& client, const String& method, const String& query) {
-        sendHomePage(client);
+        sendTouchHomePage(client);
+    });
+    
+    // CSS for touch-friendly interface
+    httpServer.on("/touch.css", [this](EthernetClient& client, const String& method, const String& query) {
+        extern const char TOUCH_FRIENDLY_CSS[];
+        SimpleHTTPServer::send(client, 200, "text/css", FPSTR(TOUCH_FRIENDLY_CSS));
     });
     
     // API status endpoint
@@ -203,6 +212,11 @@ void SimpleWebManager::setupRoutes() {
         sendUM98xConfigPage(client);
     });
     
+    // GPS config shortcut
+    httpServer.on("/gps", [this](EthernetClient& client, const String& method, const String& query) {
+        sendUM98xConfigPage(client);
+    });
+    
     // UM98x API endpoints
     httpServer.on("/api/um98x/read", [this](EthernetClient& client, const String& method, const String& query) {
         if (method == "GET") {
@@ -237,60 +251,40 @@ void SimpleWebManager::sendHomePage(EthernetClient& client) {
     SimpleHTTPServer::send(client, 200, "text/html", html);
 }
 
+void SimpleWebManager::sendTouchHomePage(EthernetClient& client) {
+    extern const char TOUCH_FRIENDLY_HOME_PAGE[];
+    
+    // Send directly from PROGMEM without string manipulation
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_HOME_PAGE);
+}
+
 void SimpleWebManager::sendEventLoggerPage(EthernetClient& client) {
-    String html = FPSTR(SIMPLE_EVENTLOGGER_PAGE);
-    html.replace("%CSS_STYLES%", FPSTR(COMMON_CSS));
-    
-    // Get actual EventLogger configuration
-    EventLogger* logger = EventLogger::getInstance();
-    EventConfig& config = logger->getConfig();
-    
-    // Replace checkbox states based on actual configuration
-    html.replace("%SERIAL_ENABLED%", config.enableSerial ? "checked" : "");
-    html.replace("%UDP_ENABLED%", config.enableUDP ? "checked" : "");
-    html.replace("%RATE_LIMIT_DISABLED%", config.disableRateLimit ? "checked" : "");
-    
-    // Build level options with actual configured levels
-    html.replace("%SERIAL_LEVEL_OPTIONS%", buildLevelOptions(config.serialLevel));
-    html.replace("%UDP_LEVEL_OPTIONS%", buildLevelOptions(config.udpLevel));
-    
-    SimpleHTTPServer::send(client, 200, "text/html", html);
+    extern const char TOUCH_FRIENDLY_EVENT_LOGGER_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_EVENT_LOGGER_PAGE);
 }
 
 void SimpleWebManager::sendNetworkPage(EthernetClient& client) {
-    extern const char SIMPLE_NETWORK_SETTINGS_PAGE[];
-    String html = FPSTR(SIMPLE_NETWORK_SETTINGS_PAGE);
+    extern const char TOUCH_FRIENDLY_NETWORK_PAGE[];
     
-    // Get current network info
-    IPAddress ip = Ethernet.localIP();
-    char ipStr[16];
-    snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-    html.replace("%IP_ADDRESS%", ipStr);
-    
-    // Get link speed
-    int linkSpeed = Ethernet.linkSpeed();
-    html.replace("%LINK_SPEED%", String(linkSpeed));
-    
-    SimpleHTTPServer::send(client, 200, "text/html", html);
+    // Send directly from PROGMEM without string manipulation
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_NETWORK_PAGE);
 }
 
 void SimpleWebManager::sendOTAPage(EthernetClient& client) {
-    extern const char SIMPLE_OTA_UPDATE_PAGE_FIXED[];
-    
-    // Send directly from PROGMEM without string manipulation
-    SimpleHTTPServer::sendP(client, 200, "text/html", SIMPLE_OTA_UPDATE_PAGE_FIXED);
+    extern const char TOUCH_FRIENDLY_OTA_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_OTA_PAGE);
 }
 
 void SimpleWebManager::sendDeviceSettingsPage(EthernetClient& client) {
-    extern const char SIMPLE_DEVICE_SETTINGS_NO_REPLACE[];
+    extern const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[];
     
     // Send directly from PROGMEM without any string manipulation
-    SimpleHTTPServer::sendP(client, 200, "text/html", SIMPLE_DEVICE_SETTINGS_NO_REPLACE);
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE);
 }
 
 void SimpleWebManager::sendAnalogWorkSwitchPage(EthernetClient& client) {
-    // Send the page directly without replacements
-    SimpleHTTPServer::sendP(client, 200, "text/html", SIMPLE_ANALOG_WORK_SWITCH_PAGE);
+    extern const char TOUCH_FRIENDLY_ANALOG_WORK_SWITCH_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_ANALOG_WORK_SWITCH_PAGE);
 }
 
 // WAS Demo page removed - using WebSocket telemetry instead
@@ -317,14 +311,15 @@ void SimpleWebManager::handleApiStatus(EthernetClient& client) {
     snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", localIP[0], localIP[1], localIP[2], localIP[3]);
     network["ip"] = ipStr;
     network["connected"] = Ethernet.linkState();
+    network["linkSpeed"] = Ethernet.linkSpeed();
     
     // Module info
     doc["deviceType"] = "Steer";  // Fixed for steer module
     doc["moduleId"] = 126;  // Fixed steer module ID
     
-    // Little Dawn status
-    doc["littleDawnDetected"] = littleDawnInterface.isDetected();
-    doc["littleDawnActive"] = littleDawnInterface.isActive();
+    // ESP32 status
+    doc["esp32Detected"] = esp32Interface.isDetected();
+    doc["esp32Active"] = esp32Interface.isDetected();  // Active if detected
     
     // System status
     doc["systemHealthy"] = true;
@@ -822,33 +817,39 @@ String SimpleWebManager::buildLevelOptions(uint8_t selectedLevel) {
 // Telemetry broadcast
 
 void SimpleWebManager::broadcastTelemetry() {
-    // Rate limit to configured rate
-    uint32_t now = millis();
-    
-    // Start with faster rate to prime the connection, then slow down
+    // Track connection state
     static uint32_t connectionStart = 0;
     static bool connectionPrimed = false;
-    
-    if (telemetryWS.getClientCount() > 0 && connectionStart == 0) {
+    static size_t lastClientCount = 0;
+
+    size_t currentClientCount = telemetryWS.getClientCount();
+
+    // Early exit if no clients connected
+    if (currentClientCount == 0) {
+        connectionStart = 0;
+        connectionPrimed = false;
+        lastClientCount = 0;
+        return;
+    }
+
+    // Now called by SimpleScheduler at 100Hz
+    uint32_t now = millis();
+
+    // Check for new connection
+    if (currentClientCount > 0 && lastClientCount == 0) {
         connectionStart = now;
         connectionPrimed = false;
         LOG_DEBUG(EventSource::NETWORK, "WebSocket client connected, priming connection");
-    } else if (telemetryWS.getClientCount() == 0) {
-        connectionStart = 0;
-        connectionPrimed = false;
     }
-    
-    // Determine target interval based on connection state
-    uint32_t targetInterval;
-    if (!connectionPrimed && connectionStart > 0 && now - connectionStart < 5000) {
-        targetInterval = 5;  // 5ms = 200Hz for first 5 seconds
-    } else {
+    lastClientCount = currentClientCount;
+
+    // During connection priming (first 5 seconds), send extra updates
+    // SimpleScheduler calls us at 100Hz, but we can send more frequently during priming
+    if (!connectionPrimed && now - connectionStart < 5000) {
+        // Send immediately during priming period (up to 100Hz from scheduler)
+        connectionPrimed = (now - connectionStart >= 5000);
+    } else if (!connectionPrimed) {
         connectionPrimed = true;
-        targetInterval = 10;  // 10ms = 100Hz normal rate
-    }
-    
-    if (now - lastTelemetryUpdate < targetInterval) {
-        return;
     }
     
     // Build telemetry packet
@@ -905,17 +906,13 @@ void SimpleWebManager::broadcastTelemetry() {
     
     // Broadcast to all connected clients
     telemetryWS.broadcastBinary((const uint8_t*)&packet, sizeof(packet));
-    
-    lastTelemetryUpdate = now;
 }
 
 // UM98x GPS Configuration handlers
 
 void SimpleWebManager::sendUM98xConfigPage(EthernetClient& client) {
-    extern const char UM98X_CONFIG_PAGE[];
-    
-    // Send directly from PROGMEM to avoid String truncation
-    SimpleHTTPServer::sendP(client, 200, "text/html", UM98X_CONFIG_PAGE);
+    extern const char TOUCH_FRIENDLY_GPS_CONFIG_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_GPS_CONFIG_PAGE);
 }
 
 void SimpleWebManager::handleUM98xRead(EthernetClient& client) {

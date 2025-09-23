@@ -74,9 +74,7 @@ private:
     uint32_t lastPulseCount;
     bool lastEncoderState;
 
-    // PGN250 timing
-    uint32_t lastPGN250Time;
-    static constexpr uint32_t PGN250_INTERVAL_MS = 100; // Send at 10Hz
+    // PGN250 timing - Now handled by SimpleScheduler at 10Hz
 
     // Sensor readings
     uint16_t lastPressureReading;

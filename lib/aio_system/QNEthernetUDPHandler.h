@@ -19,6 +19,9 @@ public:
     static void enableDHCPServer(bool enable);
     static bool isDHCPServerEnabled();
     
+    // ESP32 bridge support
+    static void sendUDP9999Packet(uint8_t* data, int length);
+    
 private:
     static qindesign::network::EthernetUDP udpPGN;   // For PGN traffic on port 8888
     static qindesign::network::EthernetUDP udpRTCM;  // For RTCM traffic on port 2233

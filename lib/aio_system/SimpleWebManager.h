@@ -44,13 +44,14 @@ private:
     bool isRunning;
     WebLanguage currentLanguage;
     bool systemReady;
-    uint32_t lastTelemetryUpdate;
+    // Timing now handled by SimpleScheduler
     
     // Route setup
     void setupRoutes();
     
     // Page handlers  
     void sendHomePage(EthernetClient& client);
+    void sendTouchHomePage(EthernetClient& client);
     void sendEventLoggerPage(EthernetClient& client);
     void sendNetworkPage(EthernetClient& client);
     void sendOTAPage(EthernetClient& client);

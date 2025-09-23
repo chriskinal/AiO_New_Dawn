@@ -9,7 +9,8 @@
   "dependencies": [
     {"name": "QNEthernet"},
     {"name": "ArduinoJson"},
-    {"name": "FlasherX"}
+    {"name": "FlasherX"},
+    {"name": "Adafruit_PWM-Servo-Driver"}
   ],
   "frameworks": "arduino",
   "platforms": "teensy"

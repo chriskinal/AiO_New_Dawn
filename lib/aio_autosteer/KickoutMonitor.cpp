@@ -29,7 +29,6 @@ KickoutMonitor::KickoutMonitor() :
     lastPulseCheck(0),
     lastPulseCount(0),
     lastEncoderState(false),
-    lastPGN250Time(0),
     lastPressureReading(0),
     lastCurrentReading(0),
     currentHighStartTime(0),
@@ -134,18 +133,7 @@ void KickoutMonitor::process() {
         lastCurrentReading = adProcessor->getMotorCurrent();
     }
     
-    // Send PGN250 at regular intervals
-    uint32_t now = millis();
-    if (now - lastPGN250Time >= PGN250_INTERVAL_MS) {
-        // Update sensor readings right before sending to ensure fresh data
-        if (!isKeyaMotor) {
-            lastPressureReading = (uint16_t)adProcessor->getPressureReading();
-            lastCurrentReading = adProcessor->getMotorCurrent();
-            
-        }
-        sendPGN250();
-        lastPGN250Time = now;
-    }
+    // PGN250 is now sent by SimpleScheduler at 10Hz via sendPGN250()
     
     // Check kickout conditions based on motor type
     if (!kickoutActive) {
@@ -509,6 +497,13 @@ uint8_t KickoutMonitor::getTurnSensorReading() const {
 }
 
 void KickoutMonitor::sendPGN250() {
+    // Update sensor readings right before sending to ensure fresh data
+    bool isKeyaMotor = (motorDriver && motorDriver->getType() == MotorDriverType::KEYA_CAN);
+    if (!isKeyaMotor && adProcessor) {
+        lastPressureReading = (uint16_t)adProcessor->getPressureReading();
+        lastCurrentReading = adProcessor->getMotorCurrent();
+    }
+
     // PGN 250 - Turn Sensor Data to AgOpenGPS
     // Format per NG-V6: {header, source, pgn, length, sensorValue, 0, 0, 0, 0, 0, 0, 0, checksum}
     uint8_t pgn250[] = {

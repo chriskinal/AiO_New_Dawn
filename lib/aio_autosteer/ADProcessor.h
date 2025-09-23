@@ -55,7 +55,6 @@ public:
     // JD PWM encoder methods
     void setJDPWMMode(bool enabled);
     bool isJDPWMMode() const { return jdPWMMode; }
-    float getJDPWMMotionValue() const { return jdPWMMotionValue; }
     uint32_t getJDPWMDutyTime() const { return jdPWMDutyTime; }
     float getJDPWMPosition() const;  // Get wheel position 0-99%
     
@@ -132,7 +131,8 @@ private:
     volatile uint32_t jdPWMPeriod;       // Full PWM period in microseconds
     volatile float jdPWMDutyPercent;     // Duty cycle percentage (0-100)
     volatile float jdPWMDutyPercentPrev; // Previous duty cycle percentage
-    float jdPWMMotionValue;              // Calculated motion value (0-255)
+    float jdPWMRollingAverage;           // Rolling average of duty time (microseconds)
+    float jdPWMDelta;                    // Difference from rolling average
     
     // Analog work switch mode
     bool analogWorkSwitchEnabled;

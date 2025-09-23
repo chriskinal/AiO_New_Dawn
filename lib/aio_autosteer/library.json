@@ -10,7 +10,7 @@
     {"name": "aio_system"},
     {"name": "aio_config"},
     {"name": "aio_communications"},
-    {"name": "Teensy_ADC"}
+    {"name": "Encoder"}
   ],
   "frameworks": "arduino",
   "platforms": "teensy"

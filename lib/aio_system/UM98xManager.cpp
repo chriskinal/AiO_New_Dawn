@@ -43,7 +43,25 @@ bool UM98xManager::readConfiguration(UM98xConfig& config) {
     if (sendCommandAndWaitForResponse("UNILOGLIST", response)) {
         parseLogListResponse(response, savedMessageSettings);
         if (savedMessageSettings.length() > 0) {
-            LOG_INFO(EventSource::SYSTEM, "Found active messages: %s", savedMessageSettings.c_str());
+            // Log each message on its own line to avoid formatting issues
+            LOG_INFO(EventSource::SYSTEM, "Found active messages:");
+            int start = 0;
+            int end = savedMessageSettings.indexOf('\n');
+            while (end != -1 || start < (int)savedMessageSettings.length()) {
+                String msg;
+                if (end != -1) {
+                    msg = savedMessageSettings.substring(start, end);
+                    start = end + 1;
+                    end = savedMessageSettings.indexOf('\n', start);
+                } else {
+                    msg = savedMessageSettings.substring(start);
+                    start = savedMessageSettings.length();
+                }
+                msg.trim();
+                if (msg.length() > 0) {
+                    LOG_INFO(EventSource::SYSTEM, "  %s", msg.c_str());
+                }
+            }
         }
     }
     
