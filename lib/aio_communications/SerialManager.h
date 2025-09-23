@@ -46,7 +46,7 @@ public:
     // Baud rates (matching pcb.h values)
     static const int32_t BAUD_GPS = 460800;
     static const int32_t BAUD_RADIO = 115200;
-    static const int32_t BAUD_RS232 = 115200;
+    static const int32_t BAUD_RS232 = 19200;
     static const int32_t BAUD_ESP32 = 460800;
     static const int32_t BAUD_IMU = 115200;
 
