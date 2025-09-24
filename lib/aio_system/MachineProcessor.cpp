@@ -329,7 +329,8 @@ void MachineProcessor::handleBroadcastPGN(uint8_t pgn, const uint8_t* data, size
         LOG_ERROR(EventSource::MACHINE, "No instance for broadcast PGN!");
         return;
     }
-    
+    if (instance->MachineProcessor::SCOnBoadStatus() == 0) // if on board section control is sleep/not active: no hello / scan repley
+    return; 
     if (pgn == 200) {
         
         uint8_t helloReply[] = {
@@ -442,7 +443,11 @@ void MachineProcessor::handlePGN239(uint8_t pgn, const uint8_t* data, size_t len
     
     if (len >= 8) {
         // Extract section states from bytes 11 & 12 (array indices 6 & 7)
-        uint16_t sectionStates = data[6] | (data[7] << 8);
+        uint16_t sectionStates;
+        if (instance->MachineProcessor::SCOnBoadStatus()) // if on board section control is sleep/not active, ignore section states from PGN239
+          sectionStates = 0;
+        else
+          sectionStates = data[6] | (data[7] << 8);
         
         // Track if any states changed
         bool statesChanged = false;
@@ -834,3 +839,17 @@ void MachineProcessor::loadMachineConfig() {
     LOG_DEBUG(EventSource::MACHINE, "loadMachineConfig() deprecated - use ConfigManager");
 }
 
+uint8_t MachineProcessor::SCOnBoadStatus() {
+// on boad section control must be switchabel active or sleep/not active to not interfere with other section control systems connected via WiFi (ESP32)
+// place here the code that affects the status of the on board section control (sleep/not active or active)
+// read it from EEPROM
+// make if changeable in webinterface
+
+// call in 1 sec loop instead of everytime a PGN comes in?
+
+//for testing purposes, set pin 24 to section 16 to turn off
+if (pinConfig.pinFunction[24] == 16) 
+  return 0; // sleep/not active
+else
+  return 1; // active
+}

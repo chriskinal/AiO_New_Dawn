@@ -85,6 +85,7 @@ public:
     
     // Section control helpers
     bool initializeSectionOutputs();
+    uint8_t SCOnBoadStatus();  // status of on board section control 0: sleep/not active, 1: active
     void setPinHigh(uint8_t pin);
     void setPinLow(uint8_t pin);
     void setPinPWM(uint8_t pin, uint16_t pwmValue);  // For Danfoss valve control
