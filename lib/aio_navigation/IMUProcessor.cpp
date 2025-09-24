@@ -8,6 +8,7 @@
 
 // Static instance pointer
 IMUProcessor *IMUProcessor::instance = nullptr;
+extern ConfigManager configManager;
 
 IMUProcessor::IMUProcessor()
     : serialMgr(nullptr), detectedType(IMUType::NONE), isInitialized(false),
@@ -234,8 +235,14 @@ void IMUProcessor::processBNO085Data()
     {
         // Update current data
         currentData.heading = bnoParser->getYaw();
-        currentData.pitch = bnoParser->getPitch();
-        currentData.roll = bnoParser->getRoll();
+        if (configManager.getIsUseYAxis()){
+            currentData.pitch = 10*(bnoParser->getRoll());
+            currentData.roll = 10*(bnoParser->getPitch());
+        }
+        else{
+            currentData.pitch = 10*(bnoParser->getPitch());
+            currentData.roll = 10*(bnoParser->getRoll());
+        }
         currentData.yawRate = bnoParser->getYawRate();
         currentData.quality = bnoParser->isActive() ? 10 : 0;
         currentData.timestamp = millis();
