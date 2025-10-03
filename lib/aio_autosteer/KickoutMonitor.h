@@ -93,7 +93,7 @@ private:
     bool checkEncoderKickout();
     bool checkPressureKickout();
     bool checkCurrentKickout();
-    bool checkMotorSlipKickout();
+    bool checkMotorSlipOverCurrentKickout();
     bool checkJDPWMKickout();
 };
 
