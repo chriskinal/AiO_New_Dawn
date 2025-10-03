@@ -210,7 +210,7 @@ void KickoutMonitor::process() {
                 motorDriver->handleKickout(KickoutType::CURRENT_SENSOR, currentAmps);
             }
         }
-        else if (isKeyaMotor && checkMotorSlipKickout()) {
+        else if (isKeyaMotor && checkMotorSlipOverCurrentKickout()) {
             kickoutActive = true;
             // Determine specific reason based on motor type
             if (motorDriver->getType() == MotorDriverType::KEYA_CAN) {
@@ -257,7 +257,7 @@ void KickoutMonitor::process() {
             case MOTOR_SLIP:
             case KEYA_SLIP:
             case KEYA_ERROR:
-                if (isKeyaMotor && checkMotorSlipKickout()) {
+                if (isKeyaMotor && checkMotorSlipOverCurrentKickout()) {
                     conditionsNormal = false;
                 }
                 break;
@@ -376,7 +376,7 @@ bool KickoutMonitor::checkCurrentKickout() {
     }
 }
 
-bool KickoutMonitor::checkMotorSlipKickout() {
+bool KickoutMonitor::checkMotorSlipOverCurrentKickout() {
     // Check if motor driver reports slip condition
     if (!motorDriver) {
         return false;
@@ -390,6 +390,14 @@ bool KickoutMonitor::checkMotorSlipKickout() {
         KeyaCANDriver* keyaDriver = static_cast<KeyaCANDriver*>(motorDriver);
         if (keyaDriver->checkMotorSlip()) {
             LOG_WARNING(EventSource::AUTOSTEER, "KICKOUT: Keya motor slip detected");
+            return true;
+        }
+        float current = keyaDriver->getKeyaCurrentX32();      // Get current from Keya x32, as only 1A resolution
+        uint8_t threshold = configMgr->getCurrentThreshold(); // Get threshold from config (0-255, same scale as PGN250)
+        //Serial.print("Keya current: "); Serial.print(current); Serial.print(" Threshold: "); Serial.println(threshold);
+        if (current > threshold) { 
+            LOG_WARNING(EventSource::AUTOSTEER, "KICKOUT: Keya motor current (A) %.1f value (Ax32): %.f over threshold %u",
+                        current/32, current, threshold);
             return true;
         }
     }

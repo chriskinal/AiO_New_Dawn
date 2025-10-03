@@ -19,7 +19,7 @@ private:
     float actualRPM = 0.0f;
     float commandedRPM = 0.0f;
     uint16_t motorPosition = 0;
-    uint16_t motorCurrent = 0;
+    float motorCurrentX32 = 0.0f;
     uint16_t motorErrorCode = 0;
     uint32_t lastHeartbeat = 0;
     bool heartbeatValid = false;
@@ -168,7 +168,7 @@ public:
         status.enabled = enabled;
         status.targetPWM = targetPWM;
         status.actualPWM = heartbeatValid ? (int16_t)(actualRPM * 255.0f / 100.0f) : targetPWM;
-        status.currentDraw = 0.0f;
+        status.currentDraw = motorCurrentX32;
         
         // Simple: no heartbeat = error
         status.hasError = !heartbeatValid;
@@ -266,7 +266,12 @@ public:
         }
         return false;
     }
-    
+         
+    // get Keya current reading
+    int getKeyaCurrentX32() {
+            return int(motorCurrentX32);
+    }
+
 private:
     void checkCANMessages() {
         CAN_message_t rxMsg;
@@ -289,8 +294,10 @@ private:
                 actualRPM = (float)speedRaw;
                 
                 // Extract current (high byte first, signed)
-                int16_t currentRaw = (int16_t)((rxMsg.buf[4] << 8) | rxMsg.buf[5]);
-                motorCurrent = (uint16_t)abs(currentRaw);
+                int16_t currentRaw = abs((int16_t)((rxMsg.buf[4] << 8) | rxMsg.buf[5]));
+                float newValue = float(abs(currentRaw)<<5); // multiply by 32 to get x32 value
+                // Simple moving average filter for current
+                motorCurrentX32 = motorCurrentX32 * 0.9 + newValue * 0.1;
                 
                 // Extract error code (high byte first)
                 motorErrorCode = (uint16_t)((rxMsg.buf[6] << 8) | rxMsg.buf[7]);
@@ -324,7 +331,7 @@ private:
         // Keya uses motor slip detection, not external kickout
         // This is handled internally by checkMotorSlip()
     }
-    float getCurrentDraw() override { return 0.0f; }  // Keya doesn't provide current via CAN
+    float getCurrentDraw() override { return motorCurrentX32; }
 };
 
 #endif // KEYA_CAN_DRIVER_H
