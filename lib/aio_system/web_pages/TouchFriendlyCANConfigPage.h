@@ -255,14 +255,37 @@ const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
                     const config = await response.json();
                     document.getElementById('brand').value = config.brand || 0;
                     document.getElementById('can1Speed').value = config.can1Speed || 0;
-                    document.getElementById('can1Function').value = config.can1Function || 0;
-                    document.getElementById('can1Name').value = config.can1Name || 0;
-                    document.getElementById('can2Speed').value = config.can2Speed || 0;
-                    document.getElementById('can2Function').value = config.can2Function || 0;
-                    document.getElementById('can2Name').value = config.can2Name || 0;
-                    document.getElementById('can3Speed').value = config.can3Speed || 0;
-                    document.getElementById('can3Function').value = config.can3Function || 0;
-                    document.getElementById('can3Name').value = config.can3Name || 0;
+
+                    // Set hidden select values with proper options for bitfield values
+                    [1, 2, 3].forEach(busNum => {
+                        const speedSelect = document.getElementById(`can${busNum}Speed`);
+                        const functionSelect = document.getElementById(`can${busNum}Function`);
+                        const nameSelect = document.getElementById(`can${busNum}Name`);
+
+                        const speedValue = config[`can${busNum}Speed`] || 0;
+                        const functionValue = config[`can${busNum}Function`] || 0;
+                        const nameValue = config[`can${busNum}Name`] || 0;
+
+                        speedSelect.value = speedValue;
+                        nameSelect.value = nameValue;
+
+                        // For function select, ensure option exists for bitfield value
+                        if (functionValue !== 0) {
+                            // Remove all options except None
+                            while (functionSelect.options.length > 1) {
+                                functionSelect.remove(1);
+                            }
+                            // Add option for the saved bitfield value
+                            const option = document.createElement('option');
+                            option.value = functionValue;
+                            option.text = 'Saved: ' + functionValue;
+                            option.selected = true;
+                            functionSelect.appendChild(option);
+                            console.log(`CAN${busNum} loaded with function value: ${functionValue} (0x${functionValue.toString(16).padStart(2, '0')})`);
+                        } else {
+                            functionSelect.value = 0;
+                        }
+                    });
                 }
             } catch (error) {
                 console.error('Error loading config:', error);
