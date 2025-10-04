@@ -188,11 +188,8 @@ const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
                         <!-- Dynamically populated based on brand and bus name -->
                     </div>
                     <select id="can1Function" name="can1Function" style="display:none;">
+                        <!-- Values will be set dynamically by JavaScript -->
                         <option value="0">None</option>
-                        <option value="1">Keya</option>
-                        <option value="2">V_Bus</option>
-                        <option value="3">ISO_Bus</option>
-                        <option value="4">K_Bus</option>
                     </select>
                 </div>
 
@@ -213,11 +210,8 @@ const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
                         <!-- Dynamically populated based on brand and bus name -->
                     </div>
                     <select id="can2Function" name="can2Function" style="display:none;">
+                        <!-- Values will be set dynamically by JavaScript -->
                         <option value="0">None</option>
-                        <option value="1">Keya</option>
-                        <option value="2">V_Bus</option>
-                        <option value="3">ISO_Bus</option>
-                        <option value="4">K_Bus</option>
                     </select>
                 </div>
 
@@ -238,11 +232,8 @@ const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
                         <!-- Dynamically populated based on brand and bus name -->
                     </div>
                     <select id="can3Function" name="can3Function" style="display:none;">
+                        <!-- Values will be set dynamically by JavaScript -->
                         <option value="0">None</option>
-                        <option value="1">Keya</option>
-                        <option value="2">V_Bus</option>
-                        <option value="3">ISO_Bus</option>
-                        <option value="4">K_Bus</option>
                     </select>
                 </div>
             </div>
@@ -538,7 +529,24 @@ const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
                 }
             });
 
-            hiddenSelect.value = selectedFunctions;
+            // Ensure the select has an option with the combined value
+            // Remove all options except the first (None)
+            while (hiddenSelect.options.length > 1) {
+                hiddenSelect.remove(1);
+            }
+
+            // Add option for the combined value if it's not 0
+            if (selectedFunctions !== 0) {
+                const option = document.createElement('option');
+                option.value = selectedFunctions;
+                option.text = 'Combined: ' + selectedFunctions;
+                option.selected = true;
+                hiddenSelect.appendChild(option);
+            } else {
+                hiddenSelect.value = 0; // Select None
+            }
+
+            console.log(`CAN${busNum} Function set to: ${selectedFunctions} (0x${selectedFunctions.toString(16).padStart(2, '0')})`);
         }
 
         // Update info text to show relevant functions only

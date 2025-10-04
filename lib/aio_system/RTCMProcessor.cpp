@@ -60,11 +60,11 @@ void RTCMProcessor::processRTCM(const uint8_t *data, size_t len, const IPAddress
         static uint32_t rtcmPacketCount = 0;
         rtcmPacketCount++;
 
-        if (millis() - lastRTCMLog > 5000)
+        if (millis() - lastRTCMLog > 60000)
         {
             lastRTCMLog = millis();
             LOG_INFO(EventSource::NETWORK, "RTCM: %lu packets from %d.%d.%d.%d:%d",
-                      rtcmPacketCount, remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3], remotePort);
+                     rtcmPacketCount, remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3], remotePort);
             rtcmPacketCount = 0;
         }
     }
