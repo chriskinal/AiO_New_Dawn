@@ -88,33 +88,8 @@ bool SerialManager::initializeSerialPorts()
 
 void SerialManager::processESP32()
 {
-    // ESP32 PGN processing
-    if (SerialESP32.available())
-    {
-        static uint8_t incomingBytes[50];
-        static uint8_t incomingIndex = 0;
-
-        incomingBytes[incomingIndex] = SerialESP32.read();
-        incomingIndex++;
-
-        // Check for CRLF termination
-        if (incomingIndex >= 2 &&
-            incomingBytes[incomingIndex - 2] == 13 &&
-            incomingBytes[incomingIndex - 1] == 10)
-        {
-            if (validatePGNHeader(incomingBytes, incomingIndex))
-            {
-                processESP32PGN(incomingBytes, incomingIndex - 2);
-            }
-            incomingIndex = 0;
-        }
-
-        // Prevent buffer overflow
-        if (incomingIndex >= sizeof(incomingBytes))
-        {
-            incomingIndex = 0;
-        }
-    }
+    // DEPRECATED - ESP32 processing now handled by ESP32Interface
+    // This method kept for compatibility but does nothing
 }
 
 

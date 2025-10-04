@@ -8,6 +8,8 @@
 #include "RTCMProcessor.h"
 #include "EventLogger.h"
 #include "DHCPLite.h"
+#include "ConfigManager.h"
+#include "ESP32Interface.h"
 
 using namespace qindesign::network;
 
@@ -19,8 +21,8 @@ EthernetUDP QNEthernetUDPHandler::udpSend;
 bool QNEthernetUDPHandler::dhcpServerEnabled = false;
 uint8_t QNEthernetUDPHandler::packetBuffer[512];
 
-// External network configuration
-extern struct NetworkConfig netConfig;
+// External ConfigManager
+extern ConfigManager configManager;
 
 void QNEthernetUDPHandler::init() {
     LOG_INFO(EventSource::NETWORK, "Initializing QNEthernet UDP handlers");
@@ -35,8 +37,10 @@ void QNEthernetUDPHandler::init() {
     IPAddress localIP = Ethernet.localIP();
     LOG_INFO(EventSource::NETWORK, "Local IP: %d.%d.%d.%d", 
              localIP[0], localIP[1], localIP[2], localIP[3]);
+    uint8_t destIP[4];
+    configManager.getDestIP(destIP);
     LOG_INFO(EventSource::NETWORK, "Broadcast IP: %d.%d.%d.%d", 
-             netConfig.destIP[0], netConfig.destIP[1], netConfig.destIP[2], netConfig.destIP[3]);
+             destIP[0], destIP[1], destIP[2], destIP[3]);
     LOG_INFO(EventSource::NETWORK, "Link Speed: %d Mbps, Full Duplex: %s", 
              Ethernet.linkSpeed(), Ethernet.linkIsFullDuplex() ? "Yes" : "No");
     
@@ -76,12 +80,18 @@ void QNEthernetUDPHandler::init() {
 void QNEthernetUDPHandler::poll() {
     static uint32_t lastStatusCheck = 0;
     static bool lastLinkStatus = false;
+    static uint8_t pollCounter = 0;
+
+    // Skip every other poll to reduce overhead
+    pollCounter++;
+    if (pollCounter & 1) return;
     
     // Check for incoming PGN packets
     int packetSize = udpPGN.parsePacket();
     if (packetSize > 0 && packetSize <= sizeof(packetBuffer)) {
         int bytesRead = udpPGN.read(packetBuffer, packetSize);
         if (bytesRead > 0) {
+            // Process the packet
             handlePGNPacket(packetBuffer, bytesRead, udpPGN.remoteIP(), udpPGN.remotePort());
         }
     }
@@ -144,7 +154,14 @@ void QNEthernetUDPHandler::poll() {
 
 void QNEthernetUDPHandler::handlePGNPacket(const uint8_t* data, size_t len, 
                                            const IPAddress& remoteIP, uint16_t remotePort) {
-    // Process the packet
+    // Process PGN packet
+    
+    // Forward to ESP32 if detected
+    if (esp32Interface.isDetected()) {
+        esp32Interface.sendToESP32(data, len);
+    }
+    
+    // Process the packet normally
     if (len > 0 && PGNProcessor::instance) {
         PGNProcessor::instance->processPGN(data, len, remoteIP, remotePort);
     }
@@ -165,12 +182,13 @@ void QNEthernetUDPHandler::sendUDPPacket(uint8_t* data, int length) {
         return;
     }
     
-    // Use the broadcast address from netConfig (updated when IP changes)
-    IPAddress broadcastIP(netConfig.destIP[0], netConfig.destIP[1], 
-                         netConfig.destIP[2], netConfig.destIP[3]);
+    // Use the broadcast address from ConfigManager
+    uint8_t destIP[4];
+    configManager.getDestIP(destIP);
+    IPAddress broadcastIP(destIP[0], destIP[1], destIP[2], destIP[3]);
     
     // Send packet
-    udpSend.beginPacket(broadcastIP, netConfig.destPort);
+    udpSend.beginPacket(broadcastIP, configManager.getDestPort());
     udpSend.write(data, length);
     if (!udpSend.endPacket()) {
         LOG_ERROR(EventSource::NETWORK, "Failed to send UDP packet");
@@ -180,6 +198,27 @@ void QNEthernetUDPHandler::sendUDPPacket(uint8_t* data, int length) {
 // Global function to replace sendUDPbytes
 void sendUDPbytes(uint8_t* data, int length) {
     QNEthernetUDPHandler::sendUDPPacket(data, length);
+}
+
+// Send packet on port 9999 (for ESP32 bridge)
+void QNEthernetUDPHandler::sendUDP9999Packet(uint8_t* data, int length) {
+    // Check Ethernet link status
+    if (!Ethernet.linkState()) {
+        LOG_ERROR(EventSource::NETWORK, "Cannot send UDP9999 - no Ethernet link");
+        return;
+    }
+    
+    // Use the broadcast address from ConfigManager
+    uint8_t destIP[4];
+    configManager.getDestIP(destIP);
+    IPAddress broadcastIP(destIP[0], destIP[1], destIP[2], destIP[3]);
+    
+    // Send packet on port 9999
+    udpSend.beginPacket(broadcastIP, 9999);
+    udpSend.write(data, length);
+    if (!udpSend.endPacket()) {
+        LOG_ERROR(EventSource::NETWORK, "Failed to send UDP9999 packet");
+    }
 }
 
 void QNEthernetUDPHandler::enableDHCPServer(bool enable) {

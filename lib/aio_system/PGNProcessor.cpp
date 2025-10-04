@@ -48,6 +48,40 @@ void PGNProcessor::processPGN(const uint8_t* data, size_t len, const IPAddress& 
             return;
         }
 
+        // Validate CRC before processing
+        // CRC is sum of bytes from index 2 to len-2 (skip header[0,1] and CRC byte)
+        if (len >= 6) // Need at least header(3) + pgn(1) + length(1) + crc(1)
+        {
+            uint8_t pgn = data[3];
+            
+            // Special handling for AgIO PGNs (200, 201, 202) which use fixed CRC 0x47
+            if (pgn == 200 || pgn == 201 || pgn == 202) {
+                uint8_t receivedCRC = data[len - 1];
+                if (receivedCRC != 0x47) {
+                    LOG_WARNING(EventSource::NETWORK, "AgIO PGN %d invalid fixed CRC: expected 0x47, got %02X", 
+                               pgn, receivedCRC);
+                    return; // Drop packet with bad CRC
+                }
+                // AgIO packets validated - continue processing
+            } else {
+                // Normal CRC calculation for AgOpenGPS PGNs
+                uint16_t crcSum = 0;
+                for (size_t i = 2; i < len - 1; i++)
+                {
+                    crcSum += data[i];
+                }
+                uint8_t calculatedCRC = (uint8_t)(crcSum & 0xFF);
+                uint8_t receivedCRC = data[len - 1];
+                
+                if (calculatedCRC != receivedCRC)
+                {
+                    LOG_WARNING(EventSource::NETWORK, "PGN %d CRC mismatch: calc=%02X, recv=%02X", 
+                               pgn, calculatedCRC, receivedCRC);
+                    return; // Drop packet with bad CRC
+                }
+            }
+        }
+
         uint8_t pgn = data[3];
         
         // Update last received time for ANY valid PGN

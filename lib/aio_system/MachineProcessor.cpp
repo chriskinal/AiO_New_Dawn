@@ -13,8 +13,7 @@
 
 extern void sendUDPbytes(uint8_t *message, int msgLen);
 
-// External network configuration - defined elsewhere
-extern struct NetworkConfig netConfig;
+// Network configuration now handled by ConfigManager
 
 // External config manager instance
 extern ConfigManager configManager;
@@ -83,8 +82,8 @@ bool MachineProcessor::initialize() {
     
     // Clear initial state
     memset(&machineState, 0, sizeof(machineState));
-    memset(&machineConfig, 0, sizeof(machineConfig));
     memset(&pinConfig, 0, sizeof(pinConfig));
+    configReceived = false;
     
     // Set default pin assignments (pins 1-6 = sections 1-6)
     for (int i = 1; i <= 6; i++) {
@@ -93,23 +92,16 @@ bool MachineProcessor::initialize() {
     
     // Load saved configuration from EEPROM
     loadPinConfig();
-    loadMachineConfig();
-    
-    // Load basic machine config from ConfigManager
-    machineConfig.raiseTime = configManager.getRaiseTime();
-    machineConfig.lowerTime = configManager.getLowerTime();
-    machineConfig.hydEnable = configManager.getHydraulicLift();
-    machineConfig.isPinActiveHigh = configManager.getIsPinActiveHigh();
+    // Machine config is loaded by ConfigManager at startup
     
     // Log loaded configuration
-    LOG_INFO(EventSource::MACHINE, "Loaded config: RaiseTime=%ds, LowerTime=%ds, HydEnable=%d, ActiveHigh=%d, ConfigRcvd=%d",
-             machineConfig.raiseTime, machineConfig.lowerTime, 
-             machineConfig.hydEnable, machineConfig.isPinActiveHigh,
-             machineConfig.configReceived);
+    LOG_INFO(EventSource::MACHINE, "Loaded config: RaiseTime=%ds, LowerTime=%ds, HydEnable=%d, ActiveHigh=%d",
+             configManager.getRaiseTime(), configManager.getLowerTime(), 
+             configManager.getHydraulicLift(), configManager.getIsPinActiveHigh());
     
     // If we have valid config from EEPROM, mark it as received
-    if (machineConfig.raiseTime > 0 && machineConfig.lowerTime > 0) {
-        machineConfig.configReceived = true;
+    if (configManager.getRaiseTime() > 0 && configManager.getLowerTime() > 0) {
+        configReceived = true;
         LOG_INFO(EventSource::MACHINE, "Valid config loaded from EEPROM - hydraulic functions enabled");
     }
     
@@ -224,7 +216,7 @@ bool MachineProcessor::initializeSectionOutputs() {
         uint16_t offValue = 0;  // LOW for sections and active high machine functions
         
         // If this is a machine function (17-21) with active low configuration
-        if (assignedFunction >= 17 && assignedFunction <= 21 && !machineConfig.isPinActiveHigh) {
+        if (assignedFunction >= 17 && assignedFunction <= 21 && !configManager.getIsPinActiveHigh()) {
             offValue = 4095;  // HIGH for active low machine functions when OFF
         }
         
@@ -309,11 +301,11 @@ void MachineProcessor::process() {
     }
     
     // Hydraulic timing - auto shutoff after configured time
-    if (machineConfig.hydEnable && machineConfig.configReceived) {
+    if (configManager.getHydraulicLift() && configReceived) {
         // Check for timeout on active one-shot timer
         if (machineState.hydLift != 0 && machineState.hydStartTime > 0) {
             uint32_t maxTime = (machineState.hydLift == 2) ? 
-                               machineConfig.raiseTime : machineConfig.lowerTime;
+                               configManager.getRaiseTime() : configManager.getLowerTime();
             uint32_t elapsed = millis() - machineState.hydStartTime;
             
             if (elapsed > (maxTime * 1000)) {
@@ -337,7 +329,13 @@ void MachineProcessor::handleBroadcastPGN(uint8_t pgn, const uint8_t* data, size
         LOG_ERROR(EventSource::MACHINE, "No instance for broadcast PGN!");
         return;
     }
-    
+
+    // Check if onboard section control should respond
+    if (!instance->isOnboardSectionControlActive()) {
+        // Sleep mode active - don't respond to hello or scan requests
+        return;
+    }
+
     if (pgn == 200) {
         
         uint8_t helloReply[] = {
@@ -355,18 +353,21 @@ void MachineProcessor::handleBroadcastPGN(uint8_t pgn, const uint8_t* data, size
     }
     else if (pgn == 202) {
         
+        uint8_t ip[4];
+        configManager.getIPAddress(ip);
+        
         uint8_t scanReply[] = {
             0x80, 0x81,                    // Header
             MACHINE_HELLO_REPLY,           // Source: Machine module (123)
             0xCB,                          // PGN: 203 Scan reply
             7,                             // Length
-            netConfig.currentIP[0],
-            netConfig.currentIP[1],
-            netConfig.currentIP[2],
-            netConfig.currentIP[3],
-            netConfig.currentIP[0],        // Subnet (repeat IP)
-            netConfig.currentIP[1],
-            netConfig.currentIP[2],
+            ip[0],
+            ip[1],
+            ip[2],
+            ip[3],
+            ip[0],        // Subnet (repeat IP)
+            ip[1],
+            ip[2],
             0                              // CRC placeholder
         };
         
@@ -416,7 +417,7 @@ void MachineProcessor::handlePGN239(uint8_t pgn, const uint8_t* data, size_t len
             // Check for state change that should trigger a one-shot timer
             
             // Only process hydraulic if enabled
-            if (instance->machineConfig.hydEnable && instance->machineConfig.configReceived) {
+            if (configManager.getHydraulicLift() && instance->configReceived) {
                 // Check if this is a new command (different from last command from AgOpenGPS)
                 if (hydLift != instance->machineState.lastHydLift) {
                     // Command changed
@@ -426,7 +427,7 @@ void MachineProcessor::handlePGN239(uint8_t pgn, const uint8_t* data, size_t len
                         instance->machineState.hydStartTime = millis();
                         LOG_INFO(EventSource::MACHINE, "*** Hydraulic %s one-shot STARTED for %d seconds ***",
                                  hydLift == 2 ? "RAISE" : "LOWER",
-                                 hydLift == 2 ? instance->machineConfig.raiseTime : instance->machineConfig.lowerTime);
+                                 hydLift == 2 ? configManager.getRaiseTime() : configManager.getLowerTime());
                     } else {
                         // Command went to 0 - clear everything
                         instance->machineState.hydLift = 0;
@@ -447,8 +448,14 @@ void MachineProcessor::handlePGN239(uint8_t pgn, const uint8_t* data, size_t len
     
     if (len >= 8) {
         // Extract section states from bytes 11 & 12 (array indices 6 & 7)
-        uint16_t sectionStates = data[6] | (data[7] << 8);
-        
+        // If in sleep mode, ignore external section control commands
+        uint16_t sectionStates;
+        if (instance->isOnboardSectionControlActive()) {
+            sectionStates = data[6] | (data[7] << 8);
+        } else {
+            sectionStates = 0;  // Sleep mode - turn off all sections
+        }
+
         // Track if any states changed
         bool statesChanged = false;
         
@@ -545,7 +552,7 @@ void MachineProcessor::handlePGN236(uint8_t pgn, const uint8_t* data, size_t len
     instance->pinConfig.configReceived = true;
     
     // Log configuration summary if both configs received
-    if (instance->machineConfig.configReceived) {
+    if (instance->configReceived) {
         LOG_INFO(EventSource::MACHINE, "Machine configuration complete:");
         for (int i = 1; i <= 6; i++) {
             uint8_t func = instance->pinConfig.pinFunction[i];
@@ -569,46 +576,42 @@ void MachineProcessor::handlePGN238(uint8_t pgn, const uint8_t* data, size_t len
     
     LOG_INFO(EventSource::MACHINE, "PGN 238 - Machine Config received");
     
-    // Parse configuration
-    instance->machineConfig.raiseTime = data[0];        // Byte 5
-    instance->machineConfig.lowerTime = data[1];        // Byte 6
+    // Parse PGN 238 data directly to local variables
+    uint8_t raiseTime = data[0];        // Byte 5
+    uint8_t lowerTime = data[1];        // Byte 6
     // Byte 7 is not used for hydraulic enable - skip data[2]
     
     // Byte 8: bit 0 = relay active state, bit 1 = hydraulic enable
     uint8_t byte8 = data[3];
-    instance->machineConfig.isPinActiveHigh = (byte8 & 0x01);  // Bit 0: relay active high/low
-    instance->machineConfig.hydEnable = (byte8 & 0x02) >> 1;   // Bit 1: hydraulic enable
+    bool isPinActiveHigh = (byte8 & 0x01);  // Bit 0: relay active high/low
+    bool hydEnable = (byte8 & 0x02) >> 1;   // Bit 1: hydraulic enable
     
-    instance->machineConfig.user1 = data[4];            // Byte 9
-    instance->machineConfig.user2 = data[5];            // Byte 10
-    instance->machineConfig.user3 = data[6];            // Byte 11
-    instance->machineConfig.user4 = data[7];            // Byte 12
+    uint8_t user1 = data[4];            // Byte 9
+    uint8_t user2 = data[5];            // Byte 10
+    uint8_t user3 = data[6];            // Byte 11
+    uint8_t user4 = data[7];            // Byte 12
     
-    instance->machineConfig.configReceived = true;
+    instance->configReceived = true;
     
     LOG_INFO(EventSource::MACHINE, "Machine Config: RaiseTime=%ds, LowerTime=%ds, HydEnable=%d, ActiveHigh=%d (byte8=0x%02X)",
-             instance->machineConfig.raiseTime,
-             instance->machineConfig.lowerTime,
-             instance->machineConfig.hydEnable,
-             instance->machineConfig.isPinActiveHigh,
-             byte8);
+             raiseTime, lowerTime, hydEnable, isPinActiveHigh, byte8);
     
     LOG_DEBUG(EventSource::MACHINE, "User values: U1=%d, U2=%d, U3=%d, U4=%d",
-              instance->machineConfig.user1,
-              instance->machineConfig.user2,
-              instance->machineConfig.user3,
-              instance->machineConfig.user4);
+              user1, user2, user3, user4);
     
-    // Update ConfigManager values
-    configManager.setRaiseTime(instance->machineConfig.raiseTime);
-    configManager.setLowerTime(instance->machineConfig.lowerTime);
-    configManager.setHydraulicLift(instance->machineConfig.hydEnable != 0);
-    configManager.setIsPinActiveHigh(instance->machineConfig.isPinActiveHigh != 0);
+    // Save to ConfigManager
+    configManager.setRaiseTime(raiseTime);
+    configManager.setLowerTime(lowerTime);
+    configManager.setHydraulicLift(hydEnable);
+    configManager.setIsPinActiveHigh(isPinActiveHigh);
+    configManager.setUser1(user1);
+    configManager.setUser2(user2);
+    configManager.setUser3(user3);
+    configManager.setUser4(user4);
     
-    // Save both to EEPROM
+    // Save to EEPROM
     LOG_INFO(EventSource::MACHINE, "Saving machine configuration to EEPROM...");
     configManager.saveMachineConfig();
-    instance->saveMachineConfig();
     
     // Update all outputs immediately with new active high/low setting
     LOG_INFO(EventSource::MACHINE, "Updating all outputs with new active high/low setting");
@@ -730,7 +733,7 @@ void MachineProcessor::updateMachineOutputs() {
         // isPinActiveHigh from AOG (PGN238 Byte 8 Bit 0):
         // - true: relay turns ON when pin goes HIGH  
         // - false: relay turns ON when pin goes LOW
-        if (machineConfig.isPinActiveHigh) {
+        if (configManager.getIsPinActiveHigh()) {
             // Active high: function state directly maps to output
             outputState = functionState;
         } else {
@@ -832,51 +835,31 @@ void MachineProcessor::loadPinConfig() {
 }
 
 void MachineProcessor::saveMachineConfig() {
-    // Save extended machine config that's not in ConfigManager
-    // Using MACHINE_CONFIG_ADDR + 80 to avoid overlap
-    int addr = MACHINE_CONFIG_ADDR + 80;
-    
-    LOG_DEBUG(EventSource::MACHINE, "Saving extended machine config to EEPROM at address %d", addr);
-    
-    // Write magic number
-    uint16_t magic = 0xBB66;
-    EEPROM.put(addr, magic);
-    addr += sizeof(magic);
-    
-    // Write user values
-    EEPROM.put(addr, machineConfig.user1);
-    addr++;
-    EEPROM.put(addr, machineConfig.user2);
-    addr++;
-    EEPROM.put(addr, machineConfig.user3);
-    addr++;
-    EEPROM.put(addr, machineConfig.user4);
-    addr++;
-    
-    LOG_INFO(EventSource::MACHINE, "Extended machine config saved to EEPROM (U1=%d, U2=%d, U3=%d, U4=%d)", 
-             machineConfig.user1, machineConfig.user2, machineConfig.user3, machineConfig.user4);
+    // This method is no longer needed - all machine config is now saved
+    // through ConfigManager::saveMachineConfig()
+    LOG_DEBUG(EventSource::MACHINE, "saveMachineConfig() deprecated - use ConfigManager");
 }
 
 void MachineProcessor::loadMachineConfig() {
-    // Load extended machine config
-    int addr = MACHINE_CONFIG_ADDR + 80;
-    
-    // Check magic number
-    uint16_t magic;
-    EEPROM.get(addr, magic);
-    addr += sizeof(magic);
-    
-    if (magic == 0xBB66) {
-        // Valid config found
-        EEPROM.get(addr, machineConfig.user1);
-        addr++;
-        EEPROM.get(addr, machineConfig.user2);
-        addr++;
-        EEPROM.get(addr, machineConfig.user3);
-        addr++;
-        EEPROM.get(addr, machineConfig.user4);
-        
-        LOG_DEBUG(EventSource::MACHINE, "Extended machine config loaded from EEPROM");
+    // This method is no longer needed - all machine config is now loaded
+    // through ConfigManager::loadMachineConfig()
+    LOG_DEBUG(EventSource::MACHINE, "loadMachineConfig() deprecated - use ConfigManager");
+}
+
+bool MachineProcessor::isOnboardSectionControlActive() const {
+    // Check if section control sleep mode is enabled
+    if (!configManager.getSectionControlSleepMode()) {
+        return true;  // Sleep mode disabled - always active
     }
+
+    // Sleep mode enabled - check for external section control activity
+    // External SC is detected if we've recently received PGN 239 from a non-zero source
+    // This is a simple heuristic: if PGN 239 comes from external source, we sleep
+    // Note: This could be enhanced to track source IPs or have explicit wake/sleep commands
+
+    // For now, sleep mode with this simple check:
+    // If sleep mode is enabled, we assume external SC may be active
+    // In practice, users would enable this setting when they have external SC
+    return false;  // Sleep when enabled (external SC assumed active)
 }
 

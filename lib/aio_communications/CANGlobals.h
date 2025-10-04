@@ -12,4 +12,9 @@ extern FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_256> globalCAN3;
 // Initialize all CAN buses
 void initializeGlobalCANBuses();
 
+// Set CAN bus speed (must be called before any CAN usage)
+void setCAN1Speed(uint32_t speed);
+void setCAN2Speed(uint32_t speed);
+void setCAN3Speed(uint32_t speed);
+
 #endif // CAN_GLOBALS_H

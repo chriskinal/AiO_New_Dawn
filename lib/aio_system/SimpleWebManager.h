@@ -9,6 +9,7 @@
 #include <QNEthernet.h>
 #include "SimpleHTTPServer.h"
 #include "SimpleWebSocket.h"
+#include "LogWebSocket.h"
 #include "Version.h"
 #include "EEPROMLayout.h"
 
@@ -41,32 +42,43 @@ public:
 private:
     SimpleHTTPServer httpServer;
     SimpleWebSocketServer telemetryWS;
+    LogWebSocket logWS;
     bool isRunning;
     WebLanguage currentLanguage;
     bool systemReady;
-    uint32_t lastTelemetryUpdate;
+    // Timing now handled by SimpleScheduler
     
     // Route setup
     void setupRoutes();
     
-    // Page handlers  
+    // Page handlers
     void sendHomePage(EthernetClient& client);
+    void sendTouchHomePage(EthernetClient& client);
     void sendEventLoggerPage(EthernetClient& client);
+    void sendLogViewerPage(EthernetClient& client);
     void sendNetworkPage(EthernetClient& client);
     void sendOTAPage(EthernetClient& client);
     void sendDeviceSettingsPage(EthernetClient& client);
     void sendAnalogWorkSwitchPage(EthernetClient& client);
+    void sendCANConfigPage(EthernetClient& client);
     
     // API handlers
     void handleApiStatus(EthernetClient& client);
     void handleApiRestart(EthernetClient& client);
     void handleEventLoggerConfig(EthernetClient& client, const String& method);
+    void handleLogViewerData(EthernetClient& client);
     void handleNetworkConfig(EthernetClient& client, const String& method);
     void handleDeviceSettings(EthernetClient& client, const String& method);
     void handleAnalogWorkSwitchStatus(EthernetClient& client);
     void handleAnalogWorkSwitchConfig(EthernetClient& client);
     void handleAnalogWorkSwitchSetpoint(EthernetClient& client);
     void handleOTAUpload(EthernetClient& client);
+    void handleCANConfig(EthernetClient& client, const String& method);
+    
+    // UM98x GPS configuration handlers
+    void sendUM98xConfigPage(EthernetClient& client);
+    void handleUM98xRead(EthernetClient& client);
+    void handleUM98xWrite(EthernetClient& client);
     
     // Helper to parse POST body
     String readPostBody(EthernetClient& client);

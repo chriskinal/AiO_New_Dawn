@@ -25,6 +25,7 @@ const char SIMPLE_HOME_PAGE[] PROGMEM = R"rawliteral(
             <li><a href='/network'>Network Settings</a></li>
             <li><a href='/analogworkswitch'>Analog Work Switch</a></li>
             <li><a href='/eventlogger'>Event Logger Settings</a></li>
+            <li><a href='/um98x-config'>UM98x GPS Configuration</a></li>
         </ul>
         
         <h2>System</h2>

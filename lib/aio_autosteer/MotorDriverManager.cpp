@@ -15,35 +15,40 @@ void MotorDriverManager::init() {
 
 MotorDriverInterface* MotorDriverManager::detectAndCreateMotorDriver(HardwareManager* hwMgr, CANManager* canMgr) {
     LOG_INFO(EventSource::AUTOSTEER, "Starting motor driver detection...");
-    
+
     // Initialize detection
     init();
-    
-    // Wait for detection to complete (up to 2 seconds for Keya)
-    uint32_t startTime = millis();
-    bool keyaChecked = false;
-    
-    while (!detectionComplete && (millis() - startTime) < 2100) {
-        // Check for Keya heartbeat
-        bool keyaDetected = canMgr && canMgr->isKeyaDetected();
-        if (keyaDetected && !keyaChecked) {
-            LOG_INFO(EventSource::AUTOSTEER, "Keya CAN heartbeat detected");
-            keyaChecked = true;
+
+    // First check if TractorCANDriver is configured
+    extern ConfigManager configManager;
+    CANSteerConfig canConfig = configManager.getCANSteerConfig();
+
+    if (canConfig.brand != 0) {  // 0 = DISABLED
+        // Use TractorCANDriver for all CAN-based steering
+        detectedType = MotorDriverType::TRACTOR_CAN;
+        detectionComplete = true;
+        LOG_INFO(EventSource::AUTOSTEER, "Using TractorCANDriver - Brand: %d", canConfig.brand);
+    } else {
+        // Original detection logic for non-CAN motors
+        // Wait for detection to complete (reduced to 1 second since no Keya auto-detect)
+        uint32_t startTime = millis();
+
+        while (!detectionComplete && (millis() - startTime) < 1100) {
+            performDetection(false);  // No more Keya auto-detection
+            delay(10);
         }
-        performDetection(keyaDetected);
-        delay(10);
-    }
-    
-    // Force detection completion if timeout
-    if (!detectionComplete) {
-        LOG_DEBUG(EventSource::AUTOSTEER, "Detection timeout - using configured/default driver");
-        performDetection(false);
+
+        // Force detection completion if timeout
+        if (!detectionComplete) {
+            LOG_DEBUG(EventSource::AUTOSTEER, "Detection timeout - using configured/default driver");
+            performDetection(false);
+        }
     }
     
     const char* driverName = "Unknown";
     switch (detectedType) {
-        case MotorDriverType::KEYA_CAN:
-            driverName = "Keya CAN Motor";
+        case MotorDriverType::TRACTOR_CAN:
+            driverName = "Tractor CAN Driver";
             break;
         case MotorDriverType::KEYA_SERIAL:
             driverName = "Keya Serial Motor";
@@ -77,8 +82,8 @@ MotorDriverInterface* MotorDriverManager::createMotorDriver(MotorDriverType type
                 hwMgr->getCurrentPin()     // Current sense pin
             );
             
-        case MotorDriverType::KEYA_CAN:
-            return new KeyaCANDriver();
+        case MotorDriverType::TRACTOR_CAN:
+            return new TractorCANDriver();
             
         case MotorDriverType::KEYA_SERIAL:
             return new KeyaSerialDriver();
@@ -98,14 +103,14 @@ bool MotorDriverManager::performDetection(bool keyaHeartbeatDetected) {
         return true;
     }
     
-    // Priority 1: Check for Keya CAN heartbeat
-    if (keyaHeartbeatDetected) {
-        detectedType = MotorDriverType::KEYA_CAN;
-        kickoutType = KickoutType::NONE;  // Keya uses motor slip detection
-        LOG_INFO(EventSource::AUTOSTEER, "Detected Keya CAN motor via heartbeat");
-        detectionComplete = true;
-        return true;
-    }
+    // Priority 1: Check for Keya CAN heartbeat - DISABLED, now using TractorCANDriver
+    // if (keyaHeartbeatDetected) {
+    //     detectedType = MotorDriverType::KEYA_CAN;
+    //     kickoutType = KickoutType::NONE;  // Keya uses motor slip detection
+    //     LOG_INFO(EventSource::AUTOSTEER, "Detected Keya CAN motor via heartbeat");
+    //     detectionComplete = true;
+    //     return true;
+    // }
     
     // Priority 2: Check for Keya Serial (after 1 second, if no CAN)
     if (millis() - detectionStartTime > 1000 && !keyaSerialChecked) {
@@ -119,8 +124,8 @@ bool MotorDriverManager::performDetection(bool keyaHeartbeatDetected) {
         }
     }
     
-    // Wait up to 2 seconds for Keya detection
-    if (millis() - detectionStartTime < 2000) {
+    // Reduced wait time since Keya is now configured via web
+    if (millis() - detectionStartTime < 1000) {
         return false;  // Still waiting
     }
     

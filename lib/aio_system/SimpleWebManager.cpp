@@ -2,10 +2,10 @@
 // Web server implementation using SimpleHTTPServer to replace AsyncWebServer
 
 #include "SimpleWebManager.h"
+#include "ConfigManager.h"
 #include "EventLogger.h"
 #include "Version.h"
 #include "HardwareManager.h"
-#include "ConfigManager.h"
 #include "QNetworkBase.h"
 #include "ADProcessor.h"
 #include "EncoderProcessor.h"
@@ -16,14 +16,21 @@
 #include "GNSSProcessor.h"
 #include "web_pages/CommonStyles.h"  // Common CSS
 #include "web_pages/SimpleDeviceSettingsNoReplace.h"  // Device settings without replacements
-#include "web_pages/SimpleHomePage.h"  // New simplified home page
-#include "web_pages/SimpleEventLoggerPage.h"  // Event logger page
-#include "web_pages/SimpleNetworkPage.h"  // Simple network settings page
-#include "web_pages/SimpleAnalogWorkSwitchPage.h"  // Analog work switch page
-#include "web_pages/SimpleOTAPageFixed.h"  // Fixed OTA update page
+#include "web_pages/TouchFriendlyEventLoggerPage.h"  // Touch-friendly event logger page
+#include "web_pages/TouchFriendlyLogViewerPage.h"  // Touch-friendly log viewer page
+#include "web_pages/TouchFriendlyAnalogWorkSwitchPage.h"  // Touch-friendly analog work switch page
+#include "web_pages/TouchFriendlyOTAPage.h"  // Touch-friendly OTA update page
+#include "web_pages/TouchFriendlyGPSConfigPage.h"  // Touch-friendly GPS configuration page
+#include "web_pages/TouchFriendlyHomePage.h"  // Touch-friendly interface
+#include "web_pages/TouchFriendlyStyles.h"  // Touch-friendly CSS
+#include "web_pages/TouchFriendlyDeviceSettingsPage.h"  // Touch-friendly device settings
+#include "web_pages/TouchFriendlyNetworkPage.h"  // Touch-friendly network settings
+#include "web_pages/TouchFriendlyAnalogWorkSwitchPage.h"  // Touch-friendly analog work switch
+#include "web_pages/TouchFriendlyCANConfigPage.h"  // Touch-friendly CAN configuration
 #include <ArduinoJson.h>
 #include <QNEthernet.h>
-#include "LittleDawnInterface.h"
+#include "ESP32Interface.h"
+#include "UM98xManager.h"
 
 using namespace qindesign::network;
 
@@ -34,11 +41,10 @@ using namespace qindesign::network;
 extern EncoderProcessor* encoderProcessor;
 extern GNSSProcessor gnssProcessor;
 
-SimpleWebManager::SimpleWebManager() : 
+SimpleWebManager::SimpleWebManager() :
     isRunning(false),
     currentLanguage(WebLanguage::ENGLISH),
-    systemReady(false),
-    lastTelemetryUpdate(0) {
+    systemReady(false) {
 }
 
 SimpleWebManager::~SimpleWebManager() {
@@ -65,7 +71,15 @@ bool SimpleWebManager::begin(uint16_t port) {
     if (!telemetryWS.begin(8082)) {
         LOG_WARNING(EventSource::NETWORK, "Failed to start WebSocket telemetry server");
     }
-    
+
+    // Start Log WebSocket server on port 8083
+    if (!logWS.begin(8083)) {
+        LOG_WARNING(EventSource::NETWORK, "Failed to start Log WebSocket server");
+    } else {
+        // Connect LogWebSocket to EventLogger
+        EventLogger::getInstance()->setLogWebSocket(&logWS);
+    }
+
     isRunning = true;
     
     IPAddress ip = Ethernet.localIP();
@@ -77,6 +91,10 @@ bool SimpleWebManager::begin(uint16_t port) {
 
 void SimpleWebManager::stop() {
     if (isRunning) {
+        // Disconnect LogWebSocket from EventLogger
+        EventLogger::getInstance()->setLogWebSocket(nullptr);
+
+        logWS.stop();
         telemetryWS.stop();
         httpServer.stop();
         isRunning = false;
@@ -85,14 +103,22 @@ void SimpleWebManager::stop() {
 }
 
 void SimpleWebManager::handleClient() {
+    // Now called by SimpleScheduler at 100Hz
     httpServer.handleClient();
     telemetryWS.handleClients();
+    logWS.handleClient();
 }
 
 void SimpleWebManager::setupRoutes() {
-    // Home page
+    // Home page - now using touch-friendly interface
     httpServer.on("/", [this](EthernetClient& client, const String& method, const String& query) {
-        sendHomePage(client);
+        sendTouchHomePage(client);
+    });
+    
+    // CSS for touch-friendly interface
+    httpServer.on("/touch.css", [this](EthernetClient& client, const String& method, const String& query) {
+        extern const char TOUCH_FRIENDLY_CSS[];
+        SimpleHTTPServer::send(client, 200, "text/css", FPSTR(TOUCH_FRIENDLY_CSS));
     });
     
     // API status endpoint
@@ -104,7 +130,12 @@ void SimpleWebManager::setupRoutes() {
     httpServer.on("/eventlogger", [this](EthernetClient& client, const String& method, const String& query) {
         sendEventLoggerPage(client);
     });
-    
+
+    // Log viewer page (tablet-friendly)
+    httpServer.on("/logs", [this](EthernetClient& client, const String& method, const String& query) {
+        sendLogViewerPage(client);
+    });
+
     // Network settings page
     httpServer.on("/network", [this](EthernetClient& client, const String& method, const String& query) {
         sendNetworkPage(client);
@@ -124,7 +155,12 @@ void SimpleWebManager::setupRoutes() {
     httpServer.on("/analogworkswitch", [this](EthernetClient& client, const String& method, const String& query) {
         sendAnalogWorkSwitchPage(client);
     });
-    
+
+    // CAN Configuration page
+    httpServer.on("/can", [this](EthernetClient& client, const String& method, const String& query) {
+        sendCANConfigPage(client);
+    });
+
     // WAS Demo page removed - using WebSocket telemetry instead
     
     // Language selection
@@ -155,7 +191,12 @@ void SimpleWebManager::setupRoutes() {
     httpServer.on("/api/eventlogger/config", [this](EthernetClient& client, const String& method, const String& query) {
         handleEventLoggerConfig(client, method);
     });
-    
+
+    // Log viewer API
+    httpServer.on("/api/logs/data", [this](EthernetClient& client, const String& method, const String& query) {
+        handleLogViewerData(client);
+    });
+
     // Network API
     httpServer.on("/api/network/config", [this](EthernetClient& client, const String& method, const String& query) {
         handleNetworkConfig(client, method);
@@ -186,11 +227,43 @@ void SimpleWebManager::setupRoutes() {
             SimpleHTTPServer::send(client, 405, "text/plain", "Method Not Allowed");
         }
     });
-    
+
+    // CAN configuration API
+    httpServer.on("/api/can/config", [this](EthernetClient& client, const String& method, const String& query) {
+        handleCANConfig(client, method);
+    });
+
     // OTA upload endpoint
     httpServer.on("/api/ota/upload", [this](EthernetClient& client, const String& method, const String& query) {
         if (method == "POST") {
             handleOTAUpload(client);
+        } else {
+            SimpleHTTPServer::send(client, 405, "text/plain", "Method Not Allowed");
+        }
+    });
+    
+    // UM98x GPS configuration page
+    httpServer.on("/um98x-config", [this](EthernetClient& client, const String& method, const String& query) {
+        sendUM98xConfigPage(client);
+    });
+    
+    // GPS config shortcut
+    httpServer.on("/gps", [this](EthernetClient& client, const String& method, const String& query) {
+        sendUM98xConfigPage(client);
+    });
+    
+    // UM98x API endpoints
+    httpServer.on("/api/um98x/read", [this](EthernetClient& client, const String& method, const String& query) {
+        if (method == "GET") {
+            handleUM98xRead(client);
+        } else {
+            SimpleHTTPServer::send(client, 405, "text/plain", "Method Not Allowed");
+        }
+    });
+    
+    httpServer.on("/api/um98x/write", [this](EthernetClient& client, const String& method, const String& query) {
+        if (method == "POST") {
+            handleUM98xWrite(client);
         } else {
             SimpleHTTPServer::send(client, 405, "text/plain", "Method Not Allowed");
         }
@@ -213,58 +286,50 @@ void SimpleWebManager::sendHomePage(EthernetClient& client) {
     SimpleHTTPServer::send(client, 200, "text/html", html);
 }
 
+void SimpleWebManager::sendTouchHomePage(EthernetClient& client) {
+    extern const char TOUCH_FRIENDLY_HOME_PAGE[];
+    
+    // Send directly from PROGMEM without string manipulation
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_HOME_PAGE);
+}
+
 void SimpleWebManager::sendEventLoggerPage(EthernetClient& client) {
-    String html = FPSTR(SIMPLE_EVENTLOGGER_PAGE);
-    html.replace("%CSS_STYLES%", FPSTR(COMMON_CSS));
-    
-    // EventLogger configuration is currently fixed - using default values
-    
-    // Replace checkbox states
-    html.replace("%SERIAL_ENABLED%", "checked");  // Default to enabled
-    html.replace("%UDP_ENABLED%", "");  // Default to disabled
-    html.replace("%RATE_LIMIT_DISABLED%", "");  // Default to rate limiting on
-    
-    // Build level options - default to INFO (level 3)
-    html.replace("%SERIAL_LEVEL_OPTIONS%", buildLevelOptions(3));
-    html.replace("%UDP_LEVEL_OPTIONS%", buildLevelOptions(3));
-    
-    SimpleHTTPServer::send(client, 200, "text/html", html);
+    extern const char TOUCH_FRIENDLY_EVENT_LOGGER_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_EVENT_LOGGER_PAGE);
+}
+
+void SimpleWebManager::sendLogViewerPage(EthernetClient& client) {
+    extern const char TOUCH_FRIENDLY_LOG_VIEWER_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_LOG_VIEWER_PAGE);
 }
 
 void SimpleWebManager::sendNetworkPage(EthernetClient& client) {
-    extern const char SIMPLE_NETWORK_SETTINGS_PAGE[];
-    String html = FPSTR(SIMPLE_NETWORK_SETTINGS_PAGE);
+    extern const char TOUCH_FRIENDLY_NETWORK_PAGE[];
     
-    // Get current network info
-    IPAddress ip = Ethernet.localIP();
-    char ipStr[16];
-    snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-    html.replace("%IP_ADDRESS%", ipStr);
-    
-    // Get link speed
-    int linkSpeed = Ethernet.linkSpeed();
-    html.replace("%LINK_SPEED%", String(linkSpeed));
-    
-    SimpleHTTPServer::send(client, 200, "text/html", html);
+    // Send directly from PROGMEM without string manipulation
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_NETWORK_PAGE);
 }
 
 void SimpleWebManager::sendOTAPage(EthernetClient& client) {
-    extern const char SIMPLE_OTA_UPDATE_PAGE_FIXED[];
-    
-    // Send directly from PROGMEM without string manipulation
-    SimpleHTTPServer::sendP(client, 200, "text/html", SIMPLE_OTA_UPDATE_PAGE_FIXED);
+    extern const char TOUCH_FRIENDLY_OTA_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_OTA_PAGE);
 }
 
 void SimpleWebManager::sendDeviceSettingsPage(EthernetClient& client) {
-    extern const char SIMPLE_DEVICE_SETTINGS_NO_REPLACE[];
+    extern const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[];
     
     // Send directly from PROGMEM without any string manipulation
-    SimpleHTTPServer::sendP(client, 200, "text/html", SIMPLE_DEVICE_SETTINGS_NO_REPLACE);
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE);
 }
 
 void SimpleWebManager::sendAnalogWorkSwitchPage(EthernetClient& client) {
-    // Send the page directly without replacements
-    SimpleHTTPServer::sendP(client, 200, "text/html", SIMPLE_ANALOG_WORK_SWITCH_PAGE);
+    extern const char TOUCH_FRIENDLY_ANALOG_WORK_SWITCH_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_ANALOG_WORK_SWITCH_PAGE);
+}
+
+void SimpleWebManager::sendCANConfigPage(EthernetClient& client) {
+    extern const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_CAN_CONFIG_PAGE);
 }
 
 // WAS Demo page removed - using WebSocket telemetry instead
@@ -291,14 +356,15 @@ void SimpleWebManager::handleApiStatus(EthernetClient& client) {
     snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", localIP[0], localIP[1], localIP[2], localIP[3]);
     network["ip"] = ipStr;
     network["connected"] = Ethernet.linkState();
+    network["linkSpeed"] = Ethernet.linkSpeed();
     
     // Module info
     doc["deviceType"] = "Steer";  // Fixed for steer module
     doc["moduleId"] = 126;  // Fixed steer module ID
     
-    // Little Dawn status
-    doc["littleDawnDetected"] = littleDawnInterface.isDetected();
-    doc["littleDawnActive"] = littleDawnInterface.isActive();
+    // ESP32 status
+    doc["esp32Detected"] = esp32Interface.isDetected();
+    doc["esp32Active"] = esp32Interface.isDetected();  // Active if detected
     
     // System status
     doc["systemHealthy"] = true;
@@ -309,14 +375,17 @@ void SimpleWebManager::handleApiStatus(EthernetClient& client) {
 }
 
 void SimpleWebManager::handleEventLoggerConfig(EthernetClient& client, const String& method) {
+    EventLogger* logger = EventLogger::getInstance();
+    
     if (method == "GET") {
         // Return current configuration
+        EventConfig& config = logger->getConfig();
         StaticJsonDocument<256> doc;
-        doc["serialEnabled"] = true;  // EventLogger serial is always enabled
-        doc["serialLevel"] = 3;  // INFO
-        doc["udpEnabled"] = false;
-        doc["udpLevel"] = 3;  // INFO
-        doc["rateLimitDisabled"] = false;
+        doc["serialEnabled"] = config.enableSerial;
+        doc["serialLevel"] = config.serialLevel;
+        doc["udpEnabled"] = config.enableUDP;
+        doc["udpLevel"] = config.udpLevel;
+        doc["rateLimitDisabled"] = config.disableRateLimit;
         
         String json;
         serializeJson(doc, json);
@@ -326,30 +395,131 @@ void SimpleWebManager::handleEventLoggerConfig(EthernetClient& client, const Str
         // Read POST body
         String body = readPostBody(client);
         
+        LOG_INFO(EventSource::NETWORK, "EventLogger POST body: %s", body.c_str());
+        
         // Parse JSON
         StaticJsonDocument<256> doc;
         DeserializationError error = deserializeJson(doc, body);
         
         if (error) {
+            LOG_ERROR(EventSource::NETWORK, "EventLogger JSON parse error: %s", error.c_str());
             SimpleHTTPServer::sendJSON(client, "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
             return;
         }
         
-        // EventLogger settings are currently fixed - changes not persisted
-        bool serialEnabled = doc["serialEnabled"] | true;
-        bool udpEnabled = doc["udpEnabled"] | false;
-        int serialLevel = doc["serialLevel"] | 3;
-        int udpLevel = doc["udpLevel"] | 3;
-        bool rateLimitDisabled = doc["rateLimitDisabled"] | false;
+        // Apply EventLogger settings
+        if (doc.containsKey("serialEnabled")) {
+            bool enabled = doc["serialEnabled"];
+            logger->enableSerial(enabled);
+            LOG_INFO(EventSource::NETWORK, "Set serial enabled: %d", enabled);
+        }
+        if (doc.containsKey("udpEnabled")) {
+            bool enabled = doc["udpEnabled"];
+            logger->enableUDP(enabled);
+            LOG_INFO(EventSource::NETWORK, "Set UDP enabled: %d", enabled);
+        }
+        if (doc.containsKey("serialLevel")) {
+            int level = doc["serialLevel"];
+            logger->setSerialLevel(static_cast<EventSeverity>(level));
+            LOG_INFO(EventSource::NETWORK, "Set serial level: %d", level);
+        }
+        if (doc.containsKey("udpLevel")) {
+            int level = doc["udpLevel"];
+            logger->setUDPLevel(static_cast<EventSeverity>(level));
+            LOG_INFO(EventSource::NETWORK, "Set UDP level: %d", level);
+        }
+        if (doc.containsKey("rateLimitDisabled")) {
+            bool disabled = doc["rateLimitDisabled"];
+            logger->setRateLimitEnabled(!disabled);
+            LOG_INFO(EventSource::NETWORK, "Set rate limit disabled: %d", disabled);
+        }
         
-        LOG_INFO(EventSource::NETWORK, "EventLogger config: Serial=%d/%d, UDP=%d/%d, RateLimit=%d", 
-                 serialEnabled, serialLevel, udpEnabled, udpLevel, rateLimitDisabled);
+        // Force save after all changes
+        logger->saveConfig();
+        
+        EventConfig& config = logger->getConfig();
+        LOG_INFO(EventSource::NETWORK, "EventLogger config after update: Serial=%d/%d, UDP=%d/%d, RateLimit=%d", 
+                 config.enableSerial, config.serialLevel, 
+                 config.enableUDP, config.udpLevel, 
+                 config.disableRateLimit);
         
         SimpleHTTPServer::sendJSON(client, "{\"status\":\"saved\"}");
         
     } else {
         SimpleHTTPServer::send(client, 405, "text/plain", "Method Not Allowed");
     }
+}
+
+void SimpleWebManager::handleLogViewerData(EthernetClient& client) {
+    EventLogger* logger = EventLogger::getInstance();
+
+    // Get log buffer info - capture snapshot to avoid race conditions
+    __disable_irq();  // Disable interrupts briefly
+    size_t count = logger->getLogBufferCount();
+    size_t head = logger->getLogBufferHead();
+    size_t bufferSize = logger->getLogBufferSize();
+
+    // Copy buffer entries to avoid corruption during output
+    LogEntry snapshot[100];
+    const LogEntry* buffer = logger->getLogBuffer();
+    memcpy(snapshot, buffer, sizeof(snapshot));
+    __enable_irq();  // Re-enable interrupts
+
+    // Send response headers manually for chunked streaming
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: application/json");
+    client.println("Connection: close");
+    client.println();
+
+    // Stream JSON directly to client
+    client.print("{\"logs\":[");
+
+    // Read from oldest to newest (circular buffer)
+    size_t start = (count < bufferSize) ? 0 : head;
+
+    for (size_t i = 0; i < count; i++) {
+        size_t index = (start + i) % bufferSize;
+        const LogEntry& entry = snapshot[index];
+
+        if (i > 0) client.print(",");
+
+        client.print("{\"timestamp\":");
+        client.print(entry.timestamp);
+        client.print(",\"severity\":");
+        client.print(static_cast<uint8_t>(entry.severity));
+        client.print(",\"source\":");
+        client.print(static_cast<uint8_t>(entry.source));
+        client.print(",\"message\":\"");
+
+        // Properly escape JSON special characters
+        const char* msg = entry.message;
+        for (size_t j = 0; msg[j] != '\0'; j++) {
+            char c = msg[j];
+            switch (c) {
+                case '"':  client.print("\\\""); break;
+                case '\\': client.print("\\\\"); break;
+                case '\n': client.print("\\n"); break;
+                case '\r': client.print("\\r"); break;
+                case '\t': client.print("\\t"); break;
+                case '\b': client.print("\\b"); break;
+                case '\f': client.print("\\f"); break;
+                default:
+                    if (c >= 32 && c < 127) {
+                        client.print(c);
+                    }
+                    // Skip control chars and non-ASCII
+                    break;
+            }
+        }
+
+        client.print("\",\"severityName\":\"");
+        client.print(logger->severityToString(entry.severity));
+        client.print("\",\"sourceName\":\"");
+        client.print(logger->sourceToString(entry.source));
+        client.print("\"}");
+    }
+
+    client.print("]}");
 }
 
 void SimpleWebManager::handleNetworkConfig(EthernetClient& client, const String& method) {
@@ -388,44 +558,23 @@ void SimpleWebManager::handleNetworkConfig(EthernetClient& client, const String&
             uint8_t octet2 = ipArray[1];
             uint8_t octet3 = ipArray[2];
             
-            // Update network configuration
-            extern NetworkConfig netConfig;
-            extern void save_current_net();
+            // Update network configuration using ConfigManager
+            ConfigManager* config = ConfigManager::getInstance();
             
             // Update IP addresses (keeping 4th octet as 126)
-            netConfig.ipAddress[0] = octet1;
-            netConfig.ipAddress[1] = octet2;
-            netConfig.ipAddress[2] = octet3;
-            netConfig.ipAddress[3] = 126;
-            
-            // Update current IP to match
-            netConfig.currentIP[0] = octet1;
-            netConfig.currentIP[1] = octet2;
-            netConfig.currentIP[2] = octet3;
-            netConfig.currentIP[3] = 126;
-            netConfig.currentIP[4] = 0;
-            
-            // Update broadcast IP for the new subnet
-            netConfig.broadcastIP[0] = octet1;
-            netConfig.broadcastIP[1] = octet2;
-            netConfig.broadcastIP[2] = octet3;
-            netConfig.broadcastIP[3] = 255;
-            netConfig.broadcastIP[4] = 0;
+            uint8_t newIP[4] = {octet1, octet2, octet3, 126};
+            config->setIPAddress(newIP);
             
             // Update destination IP to broadcast on new subnet
-            netConfig.destIP[0] = octet1;
-            netConfig.destIP[1] = octet2;
-            netConfig.destIP[2] = octet3;
-            netConfig.destIP[3] = 255;
+            uint8_t newDest[4] = {octet1, octet2, octet3, 255};
+            config->setDestIP(newDest);
             
             // Update gateway to .1 on new subnet
-            netConfig.gateway[0] = octet1;
-            netConfig.gateway[1] = octet2;
-            netConfig.gateway[2] = octet3;
-            netConfig.gateway[3] = 1;
+            uint8_t newGateway[4] = {octet1, octet2, octet3, 1};
+            config->setGateway(newGateway);
             
             // Save to EEPROM
-            save_current_net();
+            config->saveNetworkConfig();
             
             LOG_INFO(EventSource::NETWORK, "Network IP saved: %d.%d.%d.126 (reboot required)", 
                      octet1, octet2, octet3);
@@ -452,6 +601,8 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         doc["sensorFusion"] = false;  // Sensor fusion not implemented yet
         doc["pwmBrakeMode"] = config->getPWMBrakeMode();
         doc["encoderType"] = config->getEncoderType();
+        doc["jdPWMEnabled"] = config->getJDPWMEnabled();
+        doc["jdPWMSensitivity"] = config->getJDPWMSensitivity();
         
         String json;
         serializeJson(doc, json);
@@ -475,21 +626,32 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         bool sensorFusion = doc["sensorFusion"] | false;
         bool pwmBrakeMode = doc["pwmBrakeMode"] | false;
         int encoderType = doc["encoderType"] | 1;
+        bool jdPWMEnabled = doc["jdPWMEnabled"] | false;
+        int jdPWMSensitivity = doc["jdPWMSensitivity"] | 5;
         
         // Save to ConfigManager
         ConfigManager* config = ConfigManager::getInstance();
         config->setGPSPassThrough(udpPassthrough);
         config->setPWMBrakeMode(pwmBrakeMode);
         config->setEncoderType(encoderType);
+        config->setJDPWMEnabled(jdPWMEnabled);
+        config->setJDPWMSensitivity(jdPWMSensitivity);
         // Sensor fusion configuration not implemented yet
         
         // Save to EEPROM
-        config->saveTurnSensorConfig();  // This saves encoder type
+        config->saveTurnSensorConfig();  // This saves encoder type and JD PWM settings
         config->saveSteerConfig();       // This saves PWM brake mode
         config->saveGPSConfig();         // This saves GPS passthrough
         
-        LOG_INFO(EventSource::NETWORK, "Device settings saved: UDP=%d, Brake=%d, Encoder=%d", 
-                 udpPassthrough, pwmBrakeMode, encoderType);
+        // Apply JD PWM mode change to ADProcessor
+        extern ADProcessor adProcessor;
+        adProcessor.setJDPWMMode(jdPWMEnabled);
+        
+        // Update GNSSProcessor with new passthrough setting
+        gnssProcessor.setUDPPassthrough(udpPassthrough);
+        
+        LOG_DEBUG(EventSource::NETWORK, "Device settings saved: UDP=%d, Brake=%d, Encoder=%d", 
+                  udpPassthrough, pwmBrakeMode, encoderType);
         
         SimpleHTTPServer::sendJSON(client, "{\"status\":\"saved\"}");
         
@@ -754,11 +916,13 @@ String SimpleWebManager::readPostBody(EthernetClient& client) {
 
 String SimpleWebManager::buildLevelOptions(uint8_t selectedLevel) {
     String options;
-    const char* levels[] = {"OFF", "ERROR", "WARNING", "INFO", "DEBUG", "VERBOSE"};
+    // Use proper syslog severity levels
+    const char* levels[] = {"EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG"};
+    const uint8_t values[] = {0, 1, 2, 3, 4, 5, 6, 7};
     
-    for (uint8_t i = 0; i < 6; i++) {
-        options += "<option value='" + String(i) + "'";
-        if (i == selectedLevel) {
+    for (uint8_t i = 0; i < 8; i++) {
+        options += "<option value='" + String(values[i]) + "'";
+        if (values[i] == selectedLevel) {
             options += " selected";
         }
         options += ">" + String(levels[i]) + "</option>";
@@ -770,33 +934,39 @@ String SimpleWebManager::buildLevelOptions(uint8_t selectedLevel) {
 // Telemetry broadcast
 
 void SimpleWebManager::broadcastTelemetry() {
-    // Rate limit to configured rate
-    uint32_t now = millis();
-    
-    // Start with faster rate to prime the connection, then slow down
+    // Track connection state
     static uint32_t connectionStart = 0;
     static bool connectionPrimed = false;
-    
-    if (telemetryWS.getClientCount() > 0 && connectionStart == 0) {
+    static size_t lastClientCount = 0;
+
+    size_t currentClientCount = telemetryWS.getClientCount();
+
+    // Early exit if no clients connected
+    if (currentClientCount == 0) {
+        connectionStart = 0;
+        connectionPrimed = false;
+        lastClientCount = 0;
+        return;
+    }
+
+    // Now called by SimpleScheduler at 100Hz
+    uint32_t now = millis();
+
+    // Check for new connection
+    if (currentClientCount > 0 && lastClientCount == 0) {
         connectionStart = now;
         connectionPrimed = false;
         LOG_DEBUG(EventSource::NETWORK, "WebSocket client connected, priming connection");
-    } else if (telemetryWS.getClientCount() == 0) {
-        connectionStart = 0;
-        connectionPrimed = false;
     }
-    
-    // Determine target interval based on connection state
-    uint32_t targetInterval;
-    if (!connectionPrimed && connectionStart > 0 && now - connectionStart < 5000) {
-        targetInterval = 5;  // 5ms = 200Hz for first 5 seconds
-    } else {
+    lastClientCount = currentClientCount;
+
+    // During connection priming (first 5 seconds), send extra updates
+    // SimpleScheduler calls us at 100Hz, but we can send more frequently during priming
+    if (!connectionPrimed && now - connectionStart < 5000) {
+        // Send immediately during priming period (up to 100Hz from scheduler)
+        connectionPrimed = (now - connectionStart >= 5000);
+    } else if (!connectionPrimed) {
         connectionPrimed = true;
-        targetInterval = 10;  // 10ms = 100Hz normal rate
-    }
-    
-    if (now - lastTelemetryUpdate < targetInterval) {
-        return;
     }
     
     // Build telemetry packet
@@ -853,6 +1023,207 @@ void SimpleWebManager::broadcastTelemetry() {
     
     // Broadcast to all connected clients
     telemetryWS.broadcastBinary((const uint8_t*)&packet, sizeof(packet));
+}
+
+// UM98x GPS Configuration handlers
+
+void SimpleWebManager::sendUM98xConfigPage(EthernetClient& client) {
+    extern const char TOUCH_FRIENDLY_GPS_CONFIG_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_GPS_CONFIG_PAGE);
+}
+
+void SimpleWebManager::handleUM98xRead(EthernetClient& client) {
+    LOG_INFO(EventSource::NETWORK, "handleUM98xRead() called");
     
-    lastTelemetryUpdate = now;
+    // Create UM98xManager instance
+    static UM98xManager um98xManager;
+    static bool managerInitialized = false;
+    
+    if (!managerInitialized) {
+        // Initialize with GPS1 serial port (Serial5)
+        if (!um98xManager.init(&Serial5)) {
+            StaticJsonDocument<128> doc;
+            doc["success"] = false;
+            doc["error"] = "Failed to initialize UM98x manager";
+            
+            String response;
+            serializeJson(doc, response);
+            SimpleHTTPServer::send(client, 500, "application/json", response);
+            return;
+        }
+        managerInitialized = true;
+    }
+    
+    // Read configuration
+    UM98xManager::UM98xConfig config;
+    bool success = um98xManager.readConfiguration(config);
+    
+    // Build JSON response
+    StaticJsonDocument<2048> doc;
+    doc["success"] = success;
+    
+    if (success) {
+        doc["config"] = config.configCommands;
+        doc["mode"] = config.modeSettings;
+        doc["messages"] = config.messageSettings;
+    } else {
+        doc["error"] = "Failed to read GPS configuration";
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    SimpleHTTPServer::send(client, success ? 200 : 500, "application/json", response);
+}
+
+void SimpleWebManager::handleUM98xWrite(EthernetClient& client) {
+    LOG_INFO(EventSource::NETWORK, "handleUM98xWrite() called");
+    
+    // Parse POST body
+    String body = readPostBody(client);
+    
+    StaticJsonDocument<2048> doc;
+    DeserializationError error = deserializeJson(doc, body);
+    
+    if (error) {
+        StaticJsonDocument<128> responseDoc;
+        responseDoc["success"] = false;
+        responseDoc["error"] = "Invalid JSON";
+        
+        String response;
+        serializeJson(responseDoc, response);
+        SimpleHTTPServer::send(client, 400, "application/json", response);
+        return;
+    }
+    
+    // Create UM98xManager instance
+    static UM98xManager um98xManager;
+    static bool managerInitialized = false;
+    
+    if (!managerInitialized) {
+        // Initialize with GPS1 serial port (Serial5)
+        if (!um98xManager.init(&Serial5)) {
+            StaticJsonDocument<128> responseDoc;
+            responseDoc["success"] = false;
+            responseDoc["error"] = "Failed to initialize UM98x manager";
+            
+            String response;
+            serializeJson(responseDoc, response);
+            SimpleHTTPServer::send(client, 500, "application/json", response);
+            return;
+        }
+        managerInitialized = true;
+    }
+    
+    // Extract configuration from JSON
+    UM98xManager::UM98xConfig config;
+    config.configCommands = doc["config"] | "";
+    config.modeSettings = doc["mode"] | "";
+    config.messageSettings = doc["messages"] | "";
+    
+    // Write configuration
+    bool success = um98xManager.writeConfiguration(config);
+    
+    // Build response
+    StaticJsonDocument<128> responseDoc;
+    responseDoc["success"] = success;
+    if (!success) {
+        responseDoc["error"] = "Failed to write GPS configuration";
+    }
+    
+    String response;
+    serializeJson(responseDoc, response);
+    SimpleHTTPServer::send(client, success ? 200 : 500, "application/json", response);
+}
+
+void SimpleWebManager::handleCANConfig(EthernetClient& client, const String& method) {
+    extern ConfigManager configManager;
+
+    if (method == "GET") {
+        // Return current CAN configuration
+        CANSteerConfig config = configManager.getCANSteerConfig();
+
+        StaticJsonDocument<512> doc;
+        doc["brand"] = config.brand;
+        doc["can1Speed"] = config.can1Speed;
+        doc["can1Function"] = config.can1Function;
+        doc["can1Name"] = config.can1Name;
+        doc["can2Speed"] = config.can2Speed;
+        doc["can2Function"] = config.can2Function;
+        doc["can2Name"] = config.can2Name;
+        doc["can3Speed"] = config.can3Speed;
+        doc["can3Function"] = config.can3Function;
+        doc["can3Name"] = config.can3Name;
+        doc["moduleID"] = config.moduleID;
+
+        String json;
+        serializeJson(doc, json);
+        SimpleHTTPServer::sendJSON(client, json);
+
+    } else if (method == "POST") {
+        // Read POST body
+        String body = readPostBody(client);
+
+        LOG_INFO(EventSource::NETWORK, "CAN config POST body: %s", body.c_str());
+
+        // Parse JSON
+        StaticJsonDocument<512> doc;
+        DeserializationError error = deserializeJson(doc, body);
+
+        if (error) {
+            LOG_ERROR(EventSource::NETWORK, "CAN config JSON parse error: %s", error.c_str());
+            SimpleHTTPServer::sendJSON(client, "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
+            return;
+        }
+
+        // Get current config
+        CANSteerConfig config = configManager.getCANSteerConfig();
+
+        // Update config from JSON
+        if (doc.containsKey("brand")) {
+            config.brand = doc["brand"];
+        }
+        if (doc.containsKey("can1Speed")) {
+            config.can1Speed = doc["can1Speed"];
+        }
+        if (doc.containsKey("can1Function")) {
+            config.can1Function = doc["can1Function"];
+        }
+        if (doc.containsKey("can1Name")) {
+            config.can1Name = doc["can1Name"];
+        }
+        if (doc.containsKey("can2Speed")) {
+            config.can2Speed = doc["can2Speed"];
+        }
+        if (doc.containsKey("can2Function")) {
+            config.can2Function = doc["can2Function"];
+        }
+        if (doc.containsKey("can2Name")) {
+            config.can2Name = doc["can2Name"];
+        }
+        if (doc.containsKey("can3Speed")) {
+            config.can3Speed = doc["can3Speed"];
+        }
+        if (doc.containsKey("can3Function")) {
+            config.can3Function = doc["can3Function"];
+        }
+        if (doc.containsKey("can3Name")) {
+            config.can3Name = doc["can3Name"];
+        }
+        if (doc.containsKey("moduleID")) {
+            config.moduleID = doc["moduleID"];
+        }
+
+        // Save to EEPROM
+        configManager.setCANSteerConfig(config);
+        configManager.saveCANSteerConfig();
+
+        LOG_INFO(EventSource::NETWORK, "CAN config saved - Brand: %d, CAN1: %d/%d, CAN2: %d/%d, CAN3: %d/%d",
+                 config.brand, config.can1Speed, config.can1Function,
+                 config.can2Speed, config.can2Function,
+                 config.can3Speed, config.can3Function);
+
+        SimpleHTTPServer::sendJSON(client, "{\"status\":\"ok\",\"message\":\"Configuration saved. Restart required.\"}");
+    } else {
+        SimpleHTTPServer::send(client, 405, "text/plain", "Method Not Allowed");
+    }
 }

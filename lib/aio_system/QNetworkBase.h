@@ -8,6 +8,7 @@
 #include <QNEthernet.h>
 #include <QNEthernetUDP.h>
 #include "LEDManagerFSM.h"
+#include "EventLogger.h"
 
 using namespace qindesign::network;
 
@@ -31,11 +32,11 @@ public:
     static void onLinkStateChanged(bool state) {
         linkState = state;
         if (state) {
-            Serial.printf("\r\n[LINK] Ethernet link UP: %d Mbps, %s duplex\r\n", 
-                         Ethernet.linkSpeed(),
-                         Ethernet.linkIsFullDuplex() ? "full" : "half");
+            LOG_INFO(EventSource::NETWORK, "Ethernet link UP: %d Mbps, %s duplex", 
+                     Ethernet.linkSpeed(),
+                     Ethernet.linkIsFullDuplex() ? "full" : "half");
         } else {
-            Serial.println("\r\n[LINK] Ethernet link DOWN\r\n");
+            LOG_WARNING(EventSource::NETWORK, "Ethernet link DOWN");
         }
         
         // Update LED immediately on link change
@@ -79,19 +80,7 @@ public:
 // extern EthernetUDP udpRecv;
 // extern EthernetUDP udpRTCM;
 
-// Network configuration structure
-struct NetworkConfig {
-    uint8_t currentIP[5] = {192, 168, 5, 126, 0}; // Match NetConfigStruct format with 5 elements
-    uint8_t ipAddress[4] = {192, 168, 5, 126};
-    uint8_t subnet[4] = {255, 255, 255, 0};
-    uint8_t gateway[4] = {192, 168, 5, 1};
-    uint8_t dns[4] = {8, 8, 8, 8};
-    uint8_t destIP[4] = {192, 168, 5, 255}; // Broadcast by default
-    uint16_t destPort = 9999;
-    uint8_t broadcastIP[5] = {192, 168, 5, 255, 0}; // Broadcast IP for subnet
-};
-
-extern NetworkConfig netConfig;
+// NetworkConfig struct removed - using ConfigManager for all network configuration
 
 // UDP helper functions
 void sendUDPbytes(uint8_t* data, int length);

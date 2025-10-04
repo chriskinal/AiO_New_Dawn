@@ -3,6 +3,7 @@
 #include "PGNUtils.h"
 #include "EventLogger.h"
 #include "QNetworkBase.h"
+#include "ConfigManager.h"
 
 
 // Static instance pointer
@@ -231,10 +232,23 @@ void IMUProcessor::processBNO085Data()
     // Update current data if valid
     if (bnoParser->isDataValid())
     {
+        extern ConfigManager configManager;
+
         // Update current data
         currentData.heading = bnoParser->getYaw();
-        currentData.pitch = bnoParser->getPitch();
-        currentData.roll = bnoParser->getRoll();
+
+        // Apply scaling (x10) and Y-axis swap if configured
+        // Y-axis swap is needed for some mounting orientations
+        if (configManager.getIsUseYAxis()) {
+            // Swap pitch and roll axes
+            currentData.pitch = 10.0f * bnoParser->getRoll();
+            currentData.roll = 10.0f * bnoParser->getPitch();
+        } else {
+            // Normal orientation
+            currentData.pitch = 10.0f * bnoParser->getPitch();
+            currentData.roll = 10.0f * bnoParser->getRoll();
+        }
+
         currentData.yawRate = bnoParser->getYawRate();
         currentData.quality = bnoParser->isActive() ? 10 : 0;
         currentData.timestamp = millis();
@@ -352,8 +366,8 @@ void IMUProcessor::printCurrentData()
 // External reference to NetworkBase send function
 extern void sendUDPbytes(uint8_t *message, int msgLen);
 
-// External network config
-extern struct NetworkConfig netConfig;
+// Get ConfigManager instance
+extern ConfigManager configManager;
 
 void IMUProcessor::registerPGNCallbacks()
 {
@@ -400,18 +414,21 @@ void IMUProcessor::handleBroadcastPGN(uint8_t pgn, const uint8_t* data, size_t l
         // Subnet IMU reply format from PGN.md:
         // Src: 0x79 (121), PGN: 0xCB (203), Len: 7
         // IP_One, IP_Two, IP_Three, IP_Four, Subnet_One, Subnet_Two, Subnet_Three
+        uint8_t ip[4];
+        configManager.getIPAddress(ip);
+        
         uint8_t subnetReply[] = {
             0x80, 0x81,              // PGN header
             IMU_SOURCE_ID,           // Source: 0x79 (121)
             0xCB,                    // PGN: 203
             7,                       // Data length
-            netConfig.currentIP[0],  // IP_One
-            netConfig.currentIP[1],  // IP_Two
-            netConfig.currentIP[2],  // IP_Three
-            netConfig.currentIP[3],  // IP_Four
-            netConfig.currentIP[0],  // Subnet_One
-            netConfig.currentIP[1],  // Subnet_Two  
-            netConfig.currentIP[2],  // Subnet_Three
+            ip[0],  // IP_One
+            ip[1],  // IP_Two
+            ip[2],  // IP_Three
+            ip[3],  // IP_Four
+            ip[0],  // Subnet_One
+            ip[1],  // Subnet_Two  
+            ip[2],  // Subnet_Three
             0                        // CRC placeholder
         };
         
@@ -421,8 +438,8 @@ void IMUProcessor::handleBroadcastPGN(uint8_t pgn, const uint8_t* data, size_t l
         // Send the reply
         sendUDPbytes(subnetReply, sizeof(subnetReply));
         LOG_DEBUG(EventSource::IMU, "Scan reply sent: %d.%d.%d.%d / Subnet: %d.%d.%d", 
-                  netConfig.currentIP[0], netConfig.currentIP[1], netConfig.currentIP[2], netConfig.currentIP[3],
-                  netConfig.currentIP[0], netConfig.currentIP[1], netConfig.currentIP[2]);
+                  ip[0], ip[1], ip[2], ip[3],
+                  ip[0], ip[1], ip[2]);
     }
 }
 

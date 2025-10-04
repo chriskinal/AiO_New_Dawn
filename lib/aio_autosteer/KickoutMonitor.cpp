@@ -29,7 +29,6 @@ KickoutMonitor::KickoutMonitor() :
     lastPulseCheck(0),
     lastPulseCount(0),
     lastEncoderState(false),
-    lastPGN250Time(0),
     lastPressureReading(0),
     lastCurrentReading(0),
     currentHighStartTime(0),
@@ -87,7 +86,10 @@ void KickoutMonitor::process() {
     }
     
     // Determine motor type for sensor relevance
-    bool isKeyaMotor = (motorDriver && motorDriver->getType() == MotorDriverType::KEYA_CAN);
+    MotorDriverType motorType = motorDriver ? motorDriver->getType() : MotorDriverType::NONE;
+    bool isKeyaMotor = (motorType == MotorDriverType::KEYA_CAN ||
+                       motorType == MotorDriverType::KEYA_SERIAL ||
+                       motorType == MotorDriverType::TRACTOR_CAN);  // TRACTOR_CAN handles its own kickout
     
     // Debug motor type and sensor configuration
     static uint32_t lastDebugTime = 0;
@@ -97,10 +99,13 @@ void KickoutMonitor::process() {
             const char* motorTypeName = "Unknown";
             switch (motorDriver->getType()) {
                 case MotorDriverType::KEYA_CAN: motorTypeName = "KEYA_CAN"; break;
+                case MotorDriverType::KEYA_SERIAL: motorTypeName = "KEYA_SERIAL"; break;
+                case MotorDriverType::TRACTOR_CAN: motorTypeName = "TRACTOR_CAN"; break;
                 case MotorDriverType::DANFOSS: motorTypeName = "DANFOSS"; break;
                 case MotorDriverType::DRV8701: motorTypeName = "DRV8701"; break;
                 case MotorDriverType::CYTRON_MD30C: motorTypeName = "CYTRON_MD30C"; break;
                 case MotorDriverType::IBT2: motorTypeName = "IBT2"; break;
+                case MotorDriverType::GENERIC_PWM: motorTypeName = "GENERIC_PWM"; break;
                 default: break;
             }
             LOG_DEBUG(EventSource::AUTOSTEER, "KickoutMonitor: Motor=%s, isKeya=%d, Encoder=%d, Pressure=%d, Current=%d",
@@ -134,22 +139,19 @@ void KickoutMonitor::process() {
         lastCurrentReading = adProcessor->getMotorCurrent();
     }
     
-    // Send PGN250 at regular intervals
-    uint32_t now = millis();
-    if (now - lastPGN250Time >= PGN250_INTERVAL_MS) {
-        // Update sensor readings right before sending to ensure fresh data
-        if (!isKeyaMotor) {
-            lastPressureReading = (uint16_t)adProcessor->getPressureReading();
-            lastCurrentReading = adProcessor->getMotorCurrent();
-            
-        }
-        sendPGN250();
-        lastPGN250Time = now;
-    }
+    // PGN250 is now sent by SimpleScheduler at 10Hz via sendPGN250()
     
     // Check kickout conditions based on motor type
     if (!kickoutActive) {
         // Not currently in kickout - check if we should trigger one
+        
+        // Debug JD PWM status periodically
+        static uint32_t lastJDDebug = 0;
+        if (configMgr->getJDPWMEnabled() && (millis() - lastJDDebug > 2000)) {
+            LOG_DEBUG(EventSource::AUTOSTEER, "JD_PWM_KICKOUT: enabled=%d, motion_as_pressure=%u (AOG handles threshold), isKeyaMotor=%d",
+                      configMgr->getJDPWMEnabled(), lastPressureReading, isKeyaMotor);
+            lastJDDebug = millis();
+        }
         
         // External sensor checks - NOT for Keya motors
         if (!isKeyaMotor && configMgr->getShaftEncoder()) {
@@ -167,7 +169,22 @@ void KickoutMonitor::process() {
                 }
             }
         }
-        else if (!isKeyaMotor && configMgr->getPressureSensor() && checkPressureKickout()) {
+        else if (!isKeyaMotor && configMgr->getJDPWMEnabled() && checkPressureKickout()) {
+            // JD PWM mode uses pressure kickout mechanism since motion is sent as pressure
+            kickoutActive = true;
+            kickoutReason = JD_PWM_MOTION;
+            kickoutTime = millis();
+            
+            LOG_WARNING(EventSource::AUTOSTEER, "JD_PWM_KICKOUT: *** KICKOUT ACTIVATED ***");
+            LOG_WARNING(EventSource::AUTOSTEER, "KICKOUT: %s", getReasonString());
+            
+            // Notify motor driver using pressure sensor kickout type for compatibility
+            if (motorDriver) {
+                motorDriver->handleKickout(KickoutType::PRESSURE_SENSOR, lastPressureReading);
+            }
+        }
+        else if (!isKeyaMotor && configMgr->getPressureSensor() && !configMgr->getJDPWMEnabled() && checkPressureKickout()) {
+            LOG_DEBUG(EventSource::AUTOSTEER, "PRESSURE_KICKOUT: Regular pressure mode (JD PWM disabled)");
             kickoutActive = true;
             kickoutReason = PRESSURE_HIGH;
             kickoutTime = millis();
@@ -193,7 +210,7 @@ void KickoutMonitor::process() {
                 motorDriver->handleKickout(KickoutType::CURRENT_SENSOR, currentAmps);
             }
         }
-        else if (isKeyaMotor && checkMotorSlipKickout()) {
+        else if (isKeyaMotor && checkMotorSlipOverCurrentKickout()) {
             kickoutActive = true;
             // Determine specific reason based on motor type
             if (motorDriver->getType() == MotorDriverType::KEYA_CAN) {
@@ -219,8 +236,14 @@ void KickoutMonitor::process() {
                 }
                 break;
                 
+            case JD_PWM_MOTION:
+                if (!isKeyaMotor && configMgr->getJDPWMEnabled() && checkJDPWMKickout()) {
+                    conditionsNormal = false;
+                }
+                break;
+                
             case PRESSURE_HIGH:
-                if (!isKeyaMotor && configMgr->getPressureSensor() && checkPressureKickout()) {
+                if (!isKeyaMotor && configMgr->getPressureSensor() && !configMgr->getJDPWMEnabled() && checkPressureKickout()) {
                     conditionsNormal = false;
                 }
                 break;
@@ -234,7 +257,7 @@ void KickoutMonitor::process() {
             case MOTOR_SLIP:
             case KEYA_SLIP:
             case KEYA_ERROR:
-                if (isKeyaMotor && checkMotorSlipKickout()) {
+                if (isKeyaMotor && checkMotorSlipOverCurrentKickout()) {
                     conditionsNormal = false;
                 }
                 break;
@@ -353,25 +376,60 @@ bool KickoutMonitor::checkCurrentKickout() {
     }
 }
 
-bool KickoutMonitor::checkMotorSlipKickout() {
+bool KickoutMonitor::checkMotorSlipOverCurrentKickout() {
     // Check if motor driver reports slip condition
     if (!motorDriver) {
         return false;
     }
-    
+
     // Check motor type
-    if (motorDriver->getType() == MotorDriverType::KEYA_CAN) {
+    MotorDriverType motorType = motorDriver->getType();
+
+    if (motorType == MotorDriverType::KEYA_CAN) {
         // Cast to KeyaCANDriver to access slip detection
         KeyaCANDriver* keyaDriver = static_cast<KeyaCANDriver*>(motorDriver);
         if (keyaDriver->checkMotorSlip()) {
             LOG_WARNING(EventSource::AUTOSTEER, "KICKOUT: Keya motor slip detected");
             return true;
         }
+        float current = keyaDriver->getKeyaCurrentX32();      // Get current from Keya x32, as only 1A resolution
+        uint8_t threshold = configMgr->getCurrentThreshold(); // Get threshold from config (0-255, same scale as PGN250)
+        //Serial.print("Keya current: "); Serial.print(current); Serial.print(" Threshold: "); Serial.println(threshold);
+        if (current > threshold) { 
+            LOG_WARNING(EventSource::AUTOSTEER, "KICKOUT: Keya motor current (A) %.1f value (Ax32): %.f over threshold %u",
+                        current/32, current, threshold);
+            return true;
+        }
     }
-    
+    else if (motorType == MotorDriverType::TRACTOR_CAN) {
+        // TRACTOR_CAN handles its own internal kickout
+        // No slip detection needed here
+        return false;
+    }
+
     // For other motor types, could check position feedback vs commanded
     // This would require additional implementation
+
+    return false;
+}
+
+bool KickoutMonitor::checkJDPWMKickout() {
+    // In JD PWM mode, the motion value is already sent as pressure data
+    // AgOpenGPS will handle the kickout through its pressure threshold
+    // This function now only exists for logging purposes
     
+    if (configMgr->getJDPWMEnabled()) {
+        // Debug output
+        static uint32_t lastDebugTime = 0;
+        uint32_t now = millis();
+        if (now - lastDebugTime > 1000) { // Debug every second
+            LOG_DEBUG(EventSource::AUTOSTEER, "JD_PWM_CHECK: motion_as_pressure=%u (AOG handles threshold)",
+                      lastPressureReading);
+            lastDebugTime = now;
+        }
+    }
+    
+    // Always return false - let pressure kickout handle it
     return false;
 }
 
@@ -405,6 +463,7 @@ const char* KickoutMonitor::getReasonString() const {
         case MOTOR_SLIP: return "Motor Slip";
         case KEYA_SLIP: return "Keya Motor Slip";
         case KEYA_ERROR: return "Keya Motor Error";
+        case JD_PWM_MOTION: return "JD PWM Motion Detected";
         default: return "Unknown";
     }
 }
@@ -416,9 +475,12 @@ uint8_t KickoutMonitor::getTurnSensorReading() const {
     bool hasEncoder = configMgr->getShaftEncoder();
     bool hasPressure = configMgr->getPressureSensor();
     bool hasCurrent = configMgr->getCurrentSensor();
+    bool hasJDPWM = configMgr->getJDPWMEnabled();
     
     if (hasEncoder) {
         sensorType = TurnSensorType::ENCODER;
+    } else if (hasJDPWM) {
+        sensorType = TurnSensorType::JD_PWM;
     } else if (hasPressure) {
         sensorType = TurnSensorType::PRESSURE;
     } else if (hasCurrent) {
@@ -430,6 +492,9 @@ uint8_t KickoutMonitor::getTurnSensorReading() const {
     switch (sensorType) {
         case TurnSensorType::ENCODER:
             return (uint8_t)min(encoderPulseCount, 255);
+            
+        case TurnSensorType::JD_PWM:
+            return (uint8_t)lastPressureReading;  // JD PWM motion value is stored in pressure reading
             
         case TurnSensorType::PRESSURE:
             return (uint8_t)lastPressureReading;
@@ -453,6 +518,13 @@ uint8_t KickoutMonitor::getTurnSensorReading() const {
 }
 
 void KickoutMonitor::sendPGN250() {
+    // Update sensor readings right before sending to ensure fresh data
+    bool isKeyaMotor = (motorDriver && motorDriver->getType() == MotorDriverType::KEYA_CAN);
+    if (!isKeyaMotor && adProcessor) {
+        lastPressureReading = (uint16_t)adProcessor->getPressureReading();
+        lastCurrentReading = adProcessor->getMotorCurrent();
+    }
+
     // PGN 250 - Turn Sensor Data to AgOpenGPS
     // Format per NG-V6: {header, source, pgn, length, sensorValue, 0, 0, 0, 0, 0, 0, 0, checksum}
     uint8_t pgn250[] = {

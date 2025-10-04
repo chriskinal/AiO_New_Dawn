@@ -21,6 +21,9 @@ public:
     // Initialization
     bool init();
     
+    // Main processing - call from loop()
+    void process();
+    
     // Speed pulse control
     void setSpeedPulseHz(float hz);        // Set pulse frequency in Hz
     void setSpeedPulseDuty(float duty);    // Set duty cycle (0.0-1.0)
@@ -57,6 +60,9 @@ private:
     // Speed-based generation
     float currentSpeedKmh;
     float pulsesPerMeter;
+    
+    // Timing
+    uint32_t lastSpeedUpdate;
     
     // Helper methods
     void updatePWM();

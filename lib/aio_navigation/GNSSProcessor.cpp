@@ -18,7 +18,10 @@ GNSSProcessor::GNSSProcessor() : bufferIndex(0),
                                  enableNoiseFilter(true),
                                  enableDebug(false),
                                  ubxParser(nullptr),
-                                 udpPassthroughEnabled(false)
+                                 udpPassthroughEnabled(false),
+                                 processingPaused(false),
+                                 lastGGALatitude(0.0),
+                                 lastGGALongitude(0.0)
 {
 
     // Initialize data structures
@@ -26,6 +29,13 @@ GNSSProcessor::GNSSProcessor() : bufferIndex(0),
     // Initialize data
 
     gpsData.hdop = 99.9f;
+    gpsData.fixTimeFractional = 0.0f;
+    
+    // Initialize NMEA coordinate cache with valid defaults
+    gpsData.latitudeNMEA = 0.0;
+    gpsData.longitudeNMEA = 0.0;
+    gpsData.latDir = 'N';  // Default to North
+    gpsData.lonDir = 'W';  // Default to West
     resetParser();
     
     // Initialize UBX parser
@@ -48,8 +58,8 @@ bool GNSSProcessor::init()
     // Load UDP passthrough setting from ConfigManager
     extern ConfigManager configManager;
     udpPassthroughEnabled = configManager.getGPSPassThrough();
-    LOG_INFO(EventSource::GNSS, "UDP Passthrough %s (from EEPROM)", 
-             udpPassthroughEnabled ? "enabled" : "disabled");
+    LOG_DEBUG(EventSource::GNSS, "UDP Passthrough %s (from EEPROM)", 
+              udpPassthroughEnabled ? "enabled" : "disabled");
     
     // Register with PGNProcessor to receive broadcast messages
     if (PGNProcessor::instance)
@@ -98,6 +108,18 @@ bool GNSSProcessor::setup(bool enableDebug, bool enableNoiseFilter)
 
 bool GNSSProcessor::processNMEAChar(char c)
 {
+    // Skip processing if paused
+    if (processingPaused) {
+        return false;
+    }
+    
+    // Periodic status logging
+    static uint32_t lastStatusLog = 0;
+    if (millis() - lastStatusLog > 60000) {  // Every minute
+        lastStatusLog = millis();
+        LOG_INFO(EventSource::GNSS, "GNSSProcessor status: passthrough=%d", udpPassthroughEnabled);
+    }
+    
     switch (state)
     {
     case WAIT_START:
@@ -114,7 +136,10 @@ bool GNSSProcessor::processNMEAChar(char c)
     case READ_DATA:
         if (c == '*')
         {
-            parseBuffer[bufferIndex] = '\0';
+            // Store the asterisk but don't include it in CRC calculation
+            if (bufferIndex < sizeof(parseBuffer) - 1) {
+                parseBuffer[bufferIndex++] = c;
+            }
             state = READ_CHECKSUM;
             receivedChecksum = 0;
             receivedChecksum32 = 0;
@@ -122,7 +147,7 @@ bool GNSSProcessor::processNMEAChar(char c)
         }
         else if (c == '\r' || c == '\n')
         {
-            // Message without checksum
+            // Message without checksum - shouldn't happen for valid NMEA
             parseBuffer[bufferIndex] = '\0';
             return processMessage();
         }
@@ -142,6 +167,11 @@ bool GNSSProcessor::processNMEAChar(char c)
     case READ_CHECKSUM:
         if (isHex(c))
         {
+            // Store checksum characters
+            if (bufferIndex < sizeof(parseBuffer) - 1) {
+                parseBuffer[bufferIndex++] = c;
+            }
+            
             if (isUnicoreMessage)
             {
                 // Unicore uses 32-bit CRC (8 hex digits)
@@ -151,16 +181,70 @@ bool GNSSProcessor::processNMEAChar(char c)
                     checksumIndex++;
                     if (checksumIndex == 8)
                     {
-                        if (validateChecksum())
-                        {
-                            // Send complete NMEA sentence via UDP if passthrough is enabled
-                            if (udpPassthroughEnabled && bufferIndex > 0) {
-                                sendNMEAViaUDP();
+                        // Complete sentence received
+                        // Find the asterisk position for CRC calculation
+                        int asteriskPos = -1;
+                        for (int i = 0; i < bufferIndex; i++) {
+                            if (parseBuffer[i] == '*') {
+                                asteriskPos = i;
+                                break;
                             }
-                            return processMessage();
                         }
-                        else
-                        {
+                        
+                        // Log INSPVAA/INSPVAXA messages for debugging (only occasionally)
+                        if (parseBuffer[1] == 'I') {
+                            if (strstr(parseBuffer, "INSPVAXA") != nullptr) {
+                                static uint32_t inspvaxaLogCount = 0;
+                                if (++inspvaxaLogCount % 100 == 1) {  // Log every 100th message
+                                    LOG_DEBUG(EventSource::GNSS, "INSPVAXA complete: %.80s...", parseBuffer);
+                                }
+                            }
+                            else if (strstr(parseBuffer, "INSPVAA") != nullptr) {
+                                static uint32_t inspvaaLogCount = 0;
+                                if (++inspvaaLogCount % 100 == 1) {  // Log every 100th message
+                                    LOG_DEBUG(EventSource::GNSS, "INSPVAA complete: %.80s...", parseBuffer);
+                                }
+                            }
+                        }
+                        
+                        parseBuffer[bufferIndex] = '\0'; // Null terminate
+                        
+                        if (udpPassthroughEnabled) {
+                            // Just send via UDP and done
+                            if (parseBuffer[1] == 'I' && strstr(parseBuffer, "INSPVAA") != nullptr) {
+                                LOG_INFO(EventSource::GNSS, "INSPVAA UDP passthrough enabled - not processing");
+                            }
+                            sendCompleteNMEA();
+                            resetParser();
+                            return true;
+                        }
+                        
+                        // Otherwise validate and process
+                        bool checksumOK = validateChecksum();
+                        if (parseBuffer[1] == 'I') {
+                            if (strstr(parseBuffer, "INSPVAXA") != nullptr) {
+                                static uint32_t msgCountXA = 0;
+                                msgCountXA++;
+                                // Show every 100th message in debug mode
+                                if (enableDebug && msgCountXA % 100 == 0) {
+                                    LOG_DEBUG(EventSource::GNSS, "INSPVAXA #%u checksum %s", 
+                                             msgCountXA, checksumOK ? "PASSED" : "FAILED");
+                                }
+                            }
+                            else if (strstr(parseBuffer, "INSPVAA") != nullptr) {
+                                static uint32_t msgCount = 0;
+                                msgCount++;
+                                // Show every 100th message in debug mode
+                                if (enableDebug && msgCount % 100 == 0) {
+                                    LOG_DEBUG(EventSource::GNSS, "INSPVAA #%u checksum %s", 
+                                             msgCount, checksumOK ? "PASSED" : "FAILED");
+                                }
+                            }
+                        }
+                        
+                        if (checksumOK) {
+                            return processMessage();
+                        } else {
                             resetParser();
                         }
                     }
@@ -177,16 +261,21 @@ bool GNSSProcessor::processNMEAChar(char c)
                 else
                 {
                     receivedChecksum |= hexToInt(c);
-                    if (validateChecksum())
-                    {
-                        // Send complete NMEA sentence via UDP if passthrough is enabled
-                        if (udpPassthroughEnabled && bufferIndex > 0) {
-                            sendNMEAViaUDP();
-                        }
-                        return processMessage();
+                    
+                    // Complete sentence received
+                    parseBuffer[bufferIndex] = '\0'; // Null terminate
+                    
+                    if (udpPassthroughEnabled) {
+                        // Send complete NMEA sentence via UDP
+                        sendCompleteNMEA();
+                        resetParser();
+                        return true;
                     }
-                    else
-                    {
+                    
+                    // Otherwise validate and process
+                    if (validateChecksum()) {
+                        return processMessage();
+                    } else {
                         resetParser();
                     }
                 }
@@ -194,7 +283,7 @@ bool GNSSProcessor::processNMEAChar(char c)
         }
         else if (c == '\r' || c == '\n')
         {
-            resetParser();
+            // End of sentence - ignore trailing CR/LF
         }
         break;
     }
@@ -204,6 +293,11 @@ bool GNSSProcessor::processNMEAChar(char c)
 
 uint16_t GNSSProcessor::processNMEAStream(const char *data, uint16_t length)
 {
+    // Skip processing if paused
+    if (processingPaused) {
+        return 0;
+    }
+    
     uint16_t processed = 0;
 
     for (uint16_t i = 0; i < length; i++)
@@ -225,7 +319,6 @@ void GNSSProcessor::resetParser()
     checksumIndex = 0;
     isUnicoreMessage = false;
     memset(parseBuffer, 0, sizeof(parseBuffer));
-    memset(fields, 0, sizeof(fields));
 }
 
 bool GNSSProcessor::validateChecksum()
@@ -233,21 +326,39 @@ bool GNSSProcessor::validateChecksum()
     if (isUnicoreMessage)
     {
         // For Unicore messages, CRC32 is calculated from the character after # up to (but not including) *
-        // Skip the # at position 0
-        unsigned long calculatedCRC = CalculateCRC32(parseBuffer + 1, bufferIndex - 1);
+        // Find the asterisk position
+        int asteriskPos = -1;
+        for (int i = 0; i < bufferIndex; i++) {
+            if (parseBuffer[i] == '*') {
+                asteriskPos = i;
+                break;
+            }
+        }
         
-        // CRC debug enabled for testing
+        if (asteriskPos < 0) {
+            return false; // No asterisk found
+        }
+        
+        // Calculate CRC from position 1 (after #) to asteriskPos (not including *)
+        // Length = asteriskPos - 1 (since we start at position 1, not 0)
+        unsigned long calculatedCRC = CalculateCRC32(parseBuffer + 1, asteriskPos - 1);
+        
+        // CRC debug enabled for testing - always show for INSPVAA
+        bool isINSPVAA = (parseBuffer[1] == 'I' && strstr(parseBuffer, "INSPVAA") != nullptr);
+        
+        // Debug: show CRC info for INSPVAA (only when debug enabled)
+        if (isINSPVAA && enableDebug) {
+            static uint32_t crcDebugCount = 0;
+            if (++crcDebugCount % 100 == 1) {  // Show every 100th message
+                LOG_DEBUG(EventSource::GNSS, "INSPVAA CRC: calc=%08lX recv=%08lX (len=%d)", 
+                         calculatedCRC, receivedChecksum32, asteriskPos - 1);
+            }
+        }
+        
         if (enableDebug)
         {
-            LOG_DEBUG(EventSource::GNSS, "Unicore CRC: calc=%08lX recv=%08lX (len=%d)", 
-                     calculatedCRC, receivedChecksum32, bufferIndex - 1);
-            // Show what type of message this is
-            char msgPreview[11] = {0};
-            for (int i = 0; i < 10 && i < bufferIndex; i++)
-            {
-                msgPreview[i] = parseBuffer[i];
-            }
-            LOG_DEBUG(EventSource::GNSS, "Buffer[0-10]: %s, bufferIndex=%d", msgPreview, bufferIndex);
+            LOG_DEBUG(EventSource::GNSS, "Unicore CRC: calc=%08lX recv=%08lX (len=%d, asterisk@%d)", 
+                     calculatedCRC, receivedChecksum32, asteriskPos - 1, asteriskPos);
         }
         
         return calculatedCRC == receivedChecksum32;
@@ -261,8 +372,8 @@ bool GNSSProcessor::validateChecksum()
 
 bool GNSSProcessor::processMessage()
 {
-    
-    parseFields();
+    // Use zero-copy parsing
+    parseFieldsZeroCopy();
 
     if (fieldCount < 1)
     {
@@ -271,7 +382,12 @@ bool GNSSProcessor::processMessage()
     }
 
     // Determine message type and process
-    const char *msgType = fields[0];
+    // Extract message type from first field for detection
+    char msgTypeBuffer[16];
+    uint8_t msgTypeLen = min(fieldRefs[0].length, (uint8_t)15);
+    memcpy(msgTypeBuffer, fieldRefs[0].start, msgTypeLen);
+    msgTypeBuffer[msgTypeLen] = '\0';
+    const char *msgType = msgTypeBuffer;
     bool processed = false;
     
     // Debug enabled for testing
@@ -279,261 +395,198 @@ bool GNSSProcessor::processMessage()
     {
         LOG_DEBUG(EventSource::GNSS, "Message type: %s, fields: %d", msgType, fieldCount);
     }
-
-    if (strstr(msgType, "GGA"))
-    {
-        processed = parseGGA();
-    }
-    else if (strstr(msgType, "GNS"))
-    {
-        processed = parseGNS();
-    }
-    else if (strstr(msgType, "VTG"))
-    {
-        processed = parseVTG();
-    }
-    else if (strstr(msgType, "HPR"))
-    {
-        processed = parseHPR();
-    }
-    else if (strstr(msgType, "KSXT"))
-    {
-        processed = parseKSXT();
-    }
-    else if (strstr(msgType, "INSPVAA"))
-    {
-        processed = parseINSPVAA();
-    }
-    else if (strstr(msgType, "INSPVAXA"))
-    {
-        if (enableDebug)
-        {
-            LOG_DEBUG(EventSource::GNSS, "INSPVAXA detected, fieldCount=%d, bufferIndex=%d", fieldCount, bufferIndex);
-        }
-        processed = parseINSPVAXA();
-        if (processed)
-        {
-            if (enableDebug)
-            {
-                LOG_DEBUG(EventSource::GNSS, "INSPVAXA parsed successfully");
+    
+    // Use fast message type detection
+    MessageType type = detectMessageType(msgType);
+    
+    // Special logging and handling for INSPVAA/INSPVAXA
+    if (msgTypeBuffer[0] == 'I') {
+        if (strstr(msgTypeBuffer, "INSPVAA") != nullptr && strstr(msgTypeBuffer, "INSPVAXA") == nullptr) {
+            if (enableDebug) {
+                LOG_DEBUG(EventSource::GNSS, "INSPVAA processMessage: msgType='%s', fieldCount=%d, detected type=%d", 
+                         msgTypeBuffer, fieldCount, type);
+            }
+            // Force INSPVAA type if detection failed
+            if (type != MSG_INSPVAA) {
+                if (enableDebug) {
+                    LOG_DEBUG(EventSource::GNSS, "Forcing INSPVAA type (was %d)", type);
+                }
+                type = MSG_INSPVAA;
             }
         }
-        else if (enableDebug)
-        {
-            LOG_DEBUG(EventSource::GNSS, "INSPVAXA parse failed");
+        else if (strstr(msgTypeBuffer, "INSPVAXA") != nullptr) {
+            if (enableDebug) {
+                LOG_DEBUG(EventSource::GNSS, "INSPVAXA processMessage: msgType='%s', fieldCount=%d, detected type=%d", 
+                         msgTypeBuffer, fieldCount, type);
+            }
+            // Force INSPVAXA type if detection failed
+            if (type != MSG_INSPVAXA) {
+                if (enableDebug) {
+                    LOG_DEBUG(EventSource::GNSS, "Forcing INSPVAXA type (was %d)", type);
+                }
+                type = MSG_INSPVAXA;
+            }
         }
+    }
+    
+    // Debug log for message types
+    if (enableDebug) {
+        static uint32_t lastMsgLog = 0;
+        if (millis() - lastMsgLog > 10000) {  // Every 10 seconds
+            lastMsgLog = millis();
+            LOG_DEBUG(EventSource::GNSS, "GPS messages: %s (type=%d, fields=%d)", 
+                      msgType, type, fieldCount);
+        }
+    }
+    
+    switch(type) {
+        case MSG_GGA:
+            processed = parseGGAZeroCopy();  // Use zero-copy version
+            break;
+            
+        case MSG_GNS:
+            processed = parseGNSZeroCopy();  // Use zero-copy version
+            break;
+            
+        case MSG_VTG:
+            processed = parseVTGZeroCopy();  // Use zero-copy version
+            break;
+            
+        case MSG_HPR:
+            processed = parseHPRZeroCopy();  // Use zero-copy version
+            break;
+            
+        case MSG_KSXT:
+            LOG_DEBUG(EventSource::GNSS, "Processing KSXT message");
+            processed = parseKSXT();
+            break;
+            
+        case MSG_INSPVAA:
+            processed = parseINSPVAA();
+            if (enableDebug && processed) {
+                static uint32_t inspvaaProcessCount = 0;
+                if (++inspvaaProcessCount % 100 == 1) {  // Log every 100th successful parse
+                    LOG_DEBUG(EventSource::GNSS, "INSPVAA parsed - hasINS=%d, hasDualHeading=%d, lat=%.8f", 
+                             gpsData.hasINS, gpsData.hasDualHeading, gpsData.latitude);
+                }
+            }
+            break;
+            
+        case MSG_INSPVAXA:
+            if (enableDebug) {
+                LOG_DEBUG(EventSource::GNSS, "INSPVAXA detected, fieldCount=%d, bufferIndex=%d", fieldCount, bufferIndex);
+            }
+            processed = parseINSPVAXA();
+            if (processed && enableDebug) {
+                static uint32_t inspvaxaProcessCount = 0;
+                if (++inspvaxaProcessCount % 100 == 1) {  // Log every 100th successful parse
+                    LOG_DEBUG(EventSource::GNSS, "INSPVAXA parsed - hasINS=%d, hasDualHeading=%d, lat=%.8f, fixQuality=%d", 
+                             gpsData.hasINS, gpsData.hasDualHeading, gpsData.latitude, gpsData.fixQuality);
+                }
+            } else if (!processed && enableDebug) {
+                LOG_DEBUG(EventSource::GNSS, "INSPVAXA parse failed");
+            }
+            break;
+            
+        case MSG_BESTGNSSPOS:
+        case MSG_RMC:
+        case MSG_AVR:
+        case MSG_UNKNOWN:
+        default:
+            // Messages we don't currently parse
+            processed = false;
+            break;
     }
 
     if (processed)
     {
         // Valid GPS message received
-        gpsData.lastUpdateTime = millis();
+        // Note: lastUpdateTime is now set by individual message parsers
+        
+        // Debug log to track hasDualHeading status after each message
+        static uint32_t lastTraceTime = 0;
+        if (millis() - lastTraceTime > 5000) {  // Log every 5 seconds
+            lastTraceTime = millis();
+            LOG_DEBUG(EventSource::GNSS, "GPS State: hasDualHeading=%d, hasINS=%d, hasPosition=%d, fixQual=%d, msgMask=0x%02X", 
+                      gpsData.hasDualHeading, gpsData.hasINS, gpsData.hasPosition, 
+                      gpsData.fixQuality, gpsData.messageTypeMask);
+        }
     }
 
     resetParser();
     return processed;
 }
 
-void GNSSProcessor::parseFields()
-{
-    fieldCount = 0;
-    uint8_t fieldIndex = 0;
 
-    // Skip the '$' or '#' and parse comma-separated fields
-    for (int i = 1; i < bufferIndex && fieldCount < 35; i++)
-    {
-        char c = parseBuffer[i];
 
-        if (c == ',' || c == ';' || c == '\0')
-        {
-            fields[fieldCount][fieldIndex] = '\0';
-            fieldCount++;
-            fieldIndex = 0;
-        }
-        else if (fieldIndex < 23)  // Increased from 15 to 23 to match field size
-        {
-            fields[fieldCount][fieldIndex++] = c;
-        }
-    }
-    
-    // Handle the last field if we haven't terminated it yet
-    if (fieldIndex > 0 && fieldCount < 35)
-    {
-        fields[fieldCount][fieldIndex] = '\0';
-        fieldCount++;
-    }
-}
 
-bool GNSSProcessor::parseGGA()
-{
-    if (fieldCount < 9)
-        return false;
 
-    // Field 1: Time
-    gpsData.fixTime = parseTime(fields[1]);
-
-    // Fields 2-3: Latitude
-    gpsData.latitude = parseLatitude(fields[2], fields[3]);
-
-    // Fields 4-5: Longitude
-    gpsData.longitude = parseLongitude(fields[4], fields[5]);
-
-    // Field 6: Fix quality
-    gpsData.fixQuality = parseFixQuality(fields[6]);
-
-    // Field 7: Number of satellites
-    gpsData.numSatellites = atoi(fields[7]);
-
-    // Field 8: HDOP
-    gpsData.hdop = parseFloat(fields[8]);
-
-    // Field 9: Altitude
-    gpsData.altitude = parseFloat(fields[9]);
-
-    // Field 13: Age of DGPS (if present)
-    if (fieldCount > 13 && strlen(fields[13]) > 0)
-    {
-        gpsData.ageDGPS = atoi(fields[13]);
-    }
-
-    // Check if we have valid position data
-    // Need fix quality > 0 AND non-empty lat/lon fields
-    bool hasValidCoords = (strlen(fields[2]) > 0 && strlen(fields[3]) > 0 && 
-                          strlen(fields[4]) > 0 && strlen(fields[5]) > 0);
-    
-    gpsData.hasPosition = (gpsData.fixQuality > 0) && hasValidCoords && 
-                         (gpsData.latitude != 0.0 || gpsData.longitude != 0.0);
-    gpsData.isValid = gpsData.hasPosition;
-    gpsData.messageTypeMask |= (1 << 0);  // Set GGA bit
-
-    if (enableDebug)
-    {
-        logDebug("GGA processed");
-    }
-
-    return true;
-}
-
-bool GNSSProcessor::parseGNS()
-{
-    if (fieldCount < 6)
-        return false;
-
-    // Field 1: Time
-    gpsData.fixTime = parseTime(fields[1]);
-
-    // Fields 2-3: Latitude
-    gpsData.latitude = parseLatitude(fields[2], fields[3]);
-
-    // Fields 4-5: Longitude
-    gpsData.longitude = parseLongitude(fields[4], fields[5]);
-
-    // Field 6: Mode indicator (convert to fix quality)
-    gpsData.fixQuality = parseFixQuality(fields[6], true);
-
-    // Fields 7-8: Satellites, HDOP (if present)
-    if (fieldCount > 7 && strlen(fields[7]) > 0)
-    {
-        gpsData.numSatellites = atoi(fields[7]);
-    }
-    if (fieldCount > 8 && strlen(fields[8]) > 0)
-    {
-        gpsData.hdop = parseFloat(fields[8]);
-    }
-    if (fieldCount > 9 && strlen(fields[9]) > 0)
-    {
-        gpsData.altitude = parseFloat(fields[9]);
-    }
-
-    gpsData.hasPosition = (gpsData.fixQuality > 0);
-    gpsData.isValid = gpsData.hasPosition;
-    gpsData.messageTypeMask |= (1 << 2);  // Set GNS bit
-
-    if (enableDebug)
-    {
-        logDebug("GNS processed");
-    }
-
-    return true;
-}
-
-bool GNSSProcessor::parseVTG()
-{
-    if (fieldCount < 5)
-        return false;
-
-    // Field 1: True heading
-    if (strlen(fields[1]) > 0)
-    {
-        gpsData.headingTrue = parseFloat(fields[1]);
-    }
-
-    // Field 5: Speed in knots
-    if (strlen(fields[5]) > 0)
-    {
-        gpsData.speedKnots = parseFloat(fields[5]);
-
-        // Apply F9P noise filtering if enabled
-        if (enableNoiseFilter && gpsData.speedKnots < 0.1f)
-        {
-            gpsData.speedKnots = 0.0f;
-        }
-    }
-
-    gpsData.hasVelocity = true;
-    gpsData.messageTypeMask |= (1 << 1);  // Set VTG bit
-
-    if (enableDebug)
-    {
-        logDebug("VTG processed");
-    }
-
-    return true;
-}
-
-bool GNSSProcessor::parseHPR()
-{
-    if (fieldCount < 5)
-        return false;
-
-    // Field 2: Heading
-    if (strlen(fields[2]) > 0)
-    {
-        gpsData.dualHeading = parseFloat(fields[2]);
-    }
-
-    // Field 3: Roll
-    if (strlen(fields[3]) > 0)
-    {
-        gpsData.dualRoll = parseFloat(fields[3]);
-    }
-
-    // Field 5: Solution quality
-    if (strlen(fields[5]) > 0)
-    {
-        gpsData.headingQuality = atoi(fields[5]);
-    }
-
-    gpsData.hasDualHeading = true;
-    gpsData.messageTypeMask |= (1 << 5);  // Set HPR bit
-
-    if (enableDebug)
-    {
-        logDebug("HPR processed");
-    }
-
-    return true;
-}
 
 bool GNSSProcessor::parseKSXT()
 {
     if (fieldCount < 10)
         return false;
 
-    // Field 10: Position quality (convert to GGA scheme)
-    if (strlen(fields[10]) > 0)
+    // Field 1: Timestamp (YYYYMMDDHHMMSS.SS format)
+    if (fieldRefs[1].length >= 14)
     {
-        uint8_t ksxtQual = atoi(fields[10]);
+        // Extract just HHMMSS.SS portion (skip YYYYMMDD)
+        const char* timeStr = fieldRefs[1].start + 8; // Skip first 8 chars (YYYYMMDD)
+        
+        // Parse HHMMSS part manually
+        int hours = (timeStr[0] - '0') * 10 + (timeStr[1] - '0');
+        int mins = (timeStr[2] - '0') * 10 + (timeStr[3] - '0');
+        int secs = (timeStr[4] - '0') * 10 + (timeStr[5] - '0');
+        gpsData.fixTime = hours * 10000 + mins * 100 + secs;
+        
+        // Parse fractional seconds if present
+        if (timeStr[6] == '.' && fieldRefs[1].length >= 16)
+        {
+            gpsData.fixTimeFractional = (timeStr[7] - '0') * 0.1f + (timeStr[8] - '0') * 0.01f;
+        }
+        else
+        {
+            gpsData.fixTimeFractional = 0.0f;
+        }
+    }
+
+    // Field 2: Longitude (decimal degrees)
+    if (fieldRefs[2].length > 0)
+    {
+        gpsData.longitude = parseDoubleZeroCopy(fieldRefs[2]);
+    }
+
+    // Field 3: Latitude (decimal degrees)
+    if (fieldRefs[3].length > 0)
+    {
+        gpsData.latitude = parseDoubleZeroCopy(fieldRefs[3]);
+    }
+    
+    // Cache NMEA format coordinates
+    cacheNMEACoordinates(gpsData.latitude, gpsData.longitude);
+
+    // Field 4: Altitude
+    if (fieldRefs[4].length > 0)
+    {
+        gpsData.altitude = parseFloatZeroCopy(fieldRefs[4]);
+    }
+
+    // Field 5: Heading
+    if (fieldRefs[5].length > 0)
+    {
+        gpsData.dualHeading = parseFloatZeroCopy(fieldRefs[5]);
+    }
+
+    // Field 6: Pitch (used as roll in AOG)
+    if (fieldRefs[6].length > 0)
+    {
+        gpsData.dualRoll = parseFloatZeroCopy(fieldRefs[6]);
+    }
+
+    // Field 10: Position quality (convert to GGA scheme)
+    if (fieldRefs[10].length > 0)
+    {
+        uint8_t ksxtQual = parseIntZeroCopy(fieldRefs[10]);
         if (ksxtQual == 2)
             ksxtQual = 5; // FLOAT
         if (ksxtQual == 3)
@@ -542,8 +595,28 @@ bool GNSSProcessor::parseKSXT()
         gpsData.fixQuality = ksxtQual;
         gpsData.hasPosition = (ksxtQual > 0);
         gpsData.isValid = gpsData.hasPosition;
+        gpsData.headingQuality = ksxtQual; // Use same quality for heading
     }
 
+    // Field 8: Speed in km/h - convert to knots
+    if (fieldRefs[8].length > 0)
+    {
+        float speedKmh = parseFloatZeroCopy(fieldRefs[8]);
+        gpsData.speedKnots = speedKmh * 0.539957f; // Convert km/h to knots
+    }
+
+    // Field 13: Number of satellites
+    if (fieldCount > 13 && fieldRefs[13].length > 0)
+    {
+        gpsData.numSatellites = parseIntZeroCopy(fieldRefs[13]);
+    }
+
+    // Note: HDOP not directly available in KSXT, using default
+    gpsData.hdop = 0.0f;
+
+    gpsData.hasDualHeading = true;
+    gpsData.hasPosition = true;
+    gpsData.lastUpdateTime = millis();
     gpsData.messageTypeMask |= (1 << 6);  // Set KSXT bit
     
     if (enableDebug)
@@ -560,7 +633,11 @@ double GNSSProcessor::parseLatitude(const char *lat, const char *ns)
     if (!lat || !ns || strlen(lat) < 4)
         return 0.0;
 
-    double degrees = atof(lat) / 100.0;
+    // Cache the original NMEA value and direction
+    gpsData.latitudeNMEA = atof(lat);
+    gpsData.latDir = ns[0];
+
+    double degrees = gpsData.latitudeNMEA / 100.0;
     int wholeDegrees = (int)degrees;
     double minutes = (degrees - wholeDegrees) * 100.0;
 
@@ -577,7 +654,11 @@ double GNSSProcessor::parseLongitude(const char *lon, const char *ew)
     if (!lon || !ew || strlen(lon) < 5)
         return 0.0;
 
-    double degrees = atof(lon) / 100.0;
+    // Cache the original NMEA value and direction
+    gpsData.longitudeNMEA = atof(lon);
+    gpsData.lonDir = ew[0];
+
+    double degrees = gpsData.longitudeNMEA / 100.0;
     int wholeDegrees = (int)degrees;
     double minutes = (degrees - wholeDegrees) * 100.0;
 
@@ -724,47 +805,51 @@ bool GNSSProcessor::processUBXByte(uint8_t b)
 
 bool GNSSProcessor::parseINSPVAA()
 {
-    // INSPVAA format (actual from UM981):
-    // #INSPVAA,port,seq,idle%,time_status,week,seconds,pos_status,pos_type,reserved;week,seconds,
-    // lat,lon,height,north_vel,east_vel,up_vel,roll,pitch,azimuth,status*checksum
-    // The latitude starts at field 9 (0-indexed)
-    if (fieldCount < 18)
+    // INSPVAA format:
+    // #INSPVAA,port,seq,idle%,time_status,week,seconds,reserved,pos_type,reserved;
+    // week,seconds,lat,lon,height,north_vel,east_vel,up_vel,roll,pitch,azimuth,status*checksum
+    // Fields after semicolon: 10=week, 11=seconds, 12=lat, 13=lon, etc.
+    if (fieldCount < 22)  // Need at least up to status field
         return false;
     
-    // Debug field output - show all fields to debug INS status
+    // Debug field output (only occasionally)
     if (enableDebug) {
-        LOG_DEBUG(EventSource::GNSS, "INSPVAA Fields (total=%d):", fieldCount);
-        for (int i = 0; i < min(fieldCount, 25); i++)
-        {
-            LOG_DEBUG(EventSource::GNSS, "  [%d]: %s", i, fields[i]);
+        static uint32_t fieldDebugCount = 0;
+        if (++fieldDebugCount % 100 == 1) {  // Show every 100th message
+            LOG_DEBUG(EventSource::GNSS, "INSPVAA Fields (total=%d)", fieldCount);
         }
     }
     
     // Field 12: Latitude (degrees)
-    if (strlen(fields[12]) > 0)
+    if (fieldRefs[12].length > 0)
     {
-        gpsData.latitude = parseFloat(fields[12]);
+        gpsData.latitude = parseDoubleZeroCopy(fieldRefs[12]);
         gpsData.hasPosition = true;
     }
     
     // Field 13: Longitude (degrees)
-    if (strlen(fields[13]) > 0)
+    if (fieldRefs[13].length > 0)
     {
-        gpsData.longitude = parseFloat(fields[13]);
+        gpsData.longitude = parseDoubleZeroCopy(fieldRefs[13]);
+    }
+    
+    // Cache NMEA format coordinates
+    if (gpsData.hasPosition) {
+        cacheNMEACoordinates(gpsData.latitude, gpsData.longitude);
     }
     
     // Field 14: Height (meters)
-    if (strlen(fields[14]) > 0)
+    if (fieldRefs[14].length > 0)
     {
-        gpsData.altitude = parseFloat(fields[14]);
+        gpsData.altitude = parseFloatZeroCopy(fieldRefs[14]);
     }
     
     // Field 15,16,17: North, East, Up velocities (m/s)
-    if (strlen(fields[15]) > 0 && strlen(fields[16]) > 0 && strlen(fields[17]) > 0)
+    if (fieldRefs[15].length > 0 && fieldRefs[16].length > 0 && fieldRefs[17].length > 0)
     {
-        gpsData.northVelocity = parseFloat(fields[15]);
-        gpsData.eastVelocity = parseFloat(fields[16]);
-        gpsData.upVelocity = parseFloat(fields[17]);
+        gpsData.northVelocity = parseFloatZeroCopy(fieldRefs[15]);
+        gpsData.eastVelocity = parseFloatZeroCopy(fieldRefs[16]);
+        gpsData.upVelocity = parseFloatZeroCopy(fieldRefs[17]);
         
         // Calculate speed in knots from north/east velocities
         float speedMs = sqrt(gpsData.northVelocity * gpsData.northVelocity + 
@@ -774,11 +859,11 @@ bool GNSSProcessor::parseINSPVAA()
     }
     
     // Field 18,19,20: Roll, Pitch, Azimuth (degrees)
-    if (strlen(fields[18]) > 0 && strlen(fields[19]) > 0 && strlen(fields[20]) > 0)
+    if (fieldRefs[18].length > 0 && fieldRefs[19].length > 0 && fieldRefs[20].length > 0)
     {
-        gpsData.insRoll = parseFloat(fields[18]);
-        gpsData.insPitch = parseFloat(fields[19]);
-        gpsData.insHeading = parseFloat(fields[20]);
+        gpsData.insRoll = parseFloatZeroCopy(fieldRefs[18]);
+        gpsData.insPitch = parseFloatZeroCopy(fieldRefs[19]);
+        gpsData.insHeading = parseFloatZeroCopy(fieldRefs[20]);
         
         // For UM981, use INS heading/roll as dual antenna data
         gpsData.dualHeading = gpsData.insHeading;
@@ -791,34 +876,62 @@ bool GNSSProcessor::parseINSPVAA()
         LOG_DEBUG(EventSource::GNSS, "INSPVAA fieldCount=%d", fieldCount);
     }
     
-    // Field 21: INS status (e.g., "INS_ALIGNING", "INS_SOLUTION_GOOD", etc.)
-    if (fieldCount > 21 && strlen(fields[21]) > 0)
+    // Field 21: INS status - map to traditional GPS fix quality
+    // GPS Fix Quality mapping for AgOpenGPS:
+    // 0 = Invalid/No fix
+    // 1 = GPS fix (SPS)
+    // 2 = DGPS fix
+    // 4 = RTK Fixed
+    // 5 = RTK Float
+    if (fieldCount > 21 && fieldRefs[21].length > 0)
     {
-        // Parse INS alignment status string
-        if (strstr(fields[21], "INS_ALIGNING"))
+        // Parse INS status string and map to GPS fix quality
+        if (fieldStartsWith(fieldRefs[21], "INS_INACTIVE"))
         {
-            gpsData.insAlignmentStatus = 7;  // Aligning
-            gpsData.fixQuality = 0;  // No fix during alignment
+            gpsData.insAlignmentStatus = 0;  // Binary 0
+            gpsData.fixQuality = 0;  // No fix - IMU data invalid
         }
-        else if (strstr(fields[21], "INS_SOLUTION_GOOD") || strstr(fields[21], "INS_HIGH_VARIANCE"))
+        else if (fieldStartsWith(fieldRefs[21], "INS_ALIGNING"))
         {
-            gpsData.insAlignmentStatus = 3;  // Solution good
-            gpsData.fixQuality = 4;  // RTK-like quality for good INS
+            gpsData.insAlignmentStatus = 1;  // Binary 1
+            gpsData.fixQuality = 1;  // Basic GPS fix during alignment
         }
-        else if (strstr(fields[21], "INS_INACTIVE"))
+        else if (fieldStartsWith(fieldRefs[21], "INS_HIGH_VARIANCE"))
         {
-            gpsData.insAlignmentStatus = 0;  // Inactive
-            gpsData.fixQuality = 1;  // Basic GPS fix
+            gpsData.insAlignmentStatus = 2;  // Binary 2
+            gpsData.fixQuality = 2;  // DGPS-like quality (degraded)
+        }
+        else if (fieldStartsWith(fieldRefs[21], "INS_SOLUTION_GOOD"))
+        {
+            gpsData.insAlignmentStatus = 3;  // Binary 3
+            gpsData.fixQuality = 4;  // RTK Fixed quality
+        }
+        else if (fieldStartsWith(fieldRefs[21], "INS_SOLUTION_FREE"))
+        {
+            gpsData.insAlignmentStatus = 6;  // Binary 6
+            gpsData.fixQuality = 1;  // Basic fix (DR mode, no GNSS)
+        }
+        else if (fieldStartsWith(fieldRefs[21], "INS_ALIGNMENT_COMPLETE"))
+        {
+            gpsData.insAlignmentStatus = 7;  // Binary 7
+            gpsData.fixQuality = 5;  // RTK Float quality
         }
         else
         {
-            gpsData.insAlignmentStatus = 0;  // Unknown
-            gpsData.fixQuality = 1;  // Basic fix
+            // Unknown status - default to basic fix
+            gpsData.insAlignmentStatus = 0;
+            gpsData.fixQuality = 1;
         }
         
-        // Debug output - always show INS status for now
-        LOG_INFO(EventSource::GNSS, "INS Status: '%s' (alignment=%d, fixQuality=%d)", 
-                 fields[21], gpsData.insAlignmentStatus, gpsData.fixQuality);
+        // Debug output
+        if (enableDebug) {
+            char statusBuf[32];
+            int len = fieldRefs[21].length < 31 ? fieldRefs[21].length : 31;
+            memcpy(statusBuf, fieldRefs[21].start, len);
+            statusBuf[len] = '\0';
+            LOG_DEBUG(EventSource::GNSS, "INS Status: '%s' (alignment=%d, fixQuality=%d)", 
+                      statusBuf, gpsData.insAlignmentStatus, gpsData.fixQuality);
+        }
     }
     else
     {
@@ -835,18 +948,20 @@ bool GNSSProcessor::parseINSPVAA()
     gpsData.hdop = 0.9f; // Good HDOP for INS solution
     
     // Set GPS time from fields 5,6 (week, seconds) from header
-    if (strlen(fields[5]) > 0 && strlen(fields[6]) > 0)
+    if (fieldRefs[5].length > 0 && fieldRefs[6].length > 0)
     {
         // Store GPS week and seconds for UTC conversion
-        gpsData.gpsWeek = (uint16_t)atoi(fields[5]);
-        gpsData.gpsSeconds = parseFloat(fields[6]);
+        gpsData.gpsWeek = (uint16_t)parseIntZeroCopy(fieldRefs[5]);
+        gpsData.gpsSeconds = parseFloatZeroCopy(fieldRefs[6]);
         
         // Also store as fixTime for compatibility
         float seconds = gpsData.gpsSeconds;
         int hours = (int)(seconds / 3600) % 24;
         int minutes = (int)((seconds - hours * 3600) / 60);
-        int secs = (int)(seconds) % 60;
-        gpsData.fixTime = hours * 10000 + minutes * 100 + secs;
+        float secs = seconds - hours * 3600 - minutes * 60;
+        int intSecs = (int)secs;
+        gpsData.fixTime = hours * 10000 + minutes * 100 + intSecs;
+        gpsData.fixTimeFractional = secs - intSecs;
     }
     
     gpsData.hasINS = true;
@@ -863,75 +978,132 @@ bool GNSSProcessor::parseINSPVAA()
 bool GNSSProcessor::parseINSPVAXA()
 {
     // INSPVAXA format (from UM981):
-    // #INSPVAXA,header,reserved;week,seconds,lat,lon,height,undulation,north_vel,east_vel,up_vel,
-    // roll,pitch,azimuth,reserved,lat_std,lon_std,height_std,north_vel_std,east_vel_std,up_vel_std,
-    // ext_sol_stat,time_since_update*checksum
-    // NOTE: Field 15 is undulation, velocities start at field 16
+    // #INSPVAXA,port,seq,idle%,time_status,week,seconds,receiver_status,reserved1,reserved2;
+    // INS_status,position_type,lat,lon,height,north_vel,east_vel,up_vel,roll,pitch,azimuth,
+    // lat_σ,lon_σ,height_σ,north_vel_σ,east_vel_σ,up_vel_σ,ext_sol_stat,time_since_update,reserved*checksum
+    // Header (before semicolon) is field 0, then: 1=INS_status, 2=position_type, 3=lat, 4=lon, etc.
     
-    
-    // INSPVAXA typically has 32-33 fields depending on trailing fields
-    if (fieldCount < 32)
+    if (fieldCount < 29)  // Need at least up to time_since_update field
     {
         if (enableDebug)
         {
-            LOG_WARNING(EventSource::GNSS, "INSPVAXA: Not enough fields! Expected 32+, got %d", fieldCount);
+            LOG_WARNING(EventSource::GNSS, "INSPVAXA: Not enough fields! Expected 20+, got %d", fieldCount);
         }
         return false;
     }
     
-    // Field 10: INS Status - check if still aligning
-    bool insAligning = false;
-    if (strstr(fields[10], "INS_ALIGNING") != nullptr)
+    // Debug output removed - field mapping confirmed
+    
+    // Field 10: INS Status (after 10 header fields)
+    bool insValid = true;
+    if (fieldCount > 10 && fieldRefs[10].length > 0)
     {
-        insAligning = true;
-        if (enableDebug)
+        // Parse INS status and map to GPS fix quality
+        if (fieldStartsWith(fieldRefs[10], "INS_INACTIVE"))
         {
-            LOG_INFO(EventSource::GNSS, "UM981 INS is still aligning - waiting for movement");
+            gpsData.insAlignmentStatus = 0;  // Binary 0
+            gpsData.fixQuality = 0;  // No fix - IMU data invalid
+            insValid = false;
+        }
+        else if (fieldStartsWith(fieldRefs[10], "INS_ALIGNING"))
+        {
+            gpsData.insAlignmentStatus = 1;  // Binary 1
+            gpsData.fixQuality = 1;  // Basic GPS fix during alignment
+        }
+        else if (fieldStartsWith(fieldRefs[10], "INS_HIGH_VARIANCE"))
+        {
+            gpsData.insAlignmentStatus = 2;  // Binary 2
+            gpsData.fixQuality = 2;  // DGPS-like quality (degraded)
+        }
+        else if (fieldStartsWith(fieldRefs[10], "INS_SOLUTION_GOOD"))
+        {
+            gpsData.insAlignmentStatus = 3;  // Binary 3
+            gpsData.fixQuality = 4;  // RTK Fixed quality
+        }
+        else if (fieldStartsWith(fieldRefs[10], "INS_SOLUTION_FREE"))
+        {
+            gpsData.insAlignmentStatus = 6;  // Binary 6
+            gpsData.fixQuality = 1;  // Basic fix (DR mode, no GNSS)
+        }
+        else if (fieldStartsWith(fieldRefs[10], "INS_ALIGNMENT_COMPLETE"))
+        {
+            gpsData.insAlignmentStatus = 7;  // Binary 7
+            gpsData.fixQuality = 5;  // RTK Float quality
+        }
+        else
+        {
+            // Unknown status - default to basic fix
+            gpsData.insAlignmentStatus = 0;
+            gpsData.fixQuality = 1;
+        }
+    }
+    
+    // Field 11: Position type - update fix quality based on position type
+    if (fieldCount > 11 && fieldRefs[11].length > 0)
+    {
+        if (fieldStartsWith(fieldRefs[11], "INS_RTKFIXED"))
+        {
+            gpsData.posType = 56;  // INS_RTKFIXED from spec
+            gpsData.fixQuality = 4;  // RTK Fixed
+        }
+        else if (fieldStartsWith(fieldRefs[11], "INS_RTKFLOAT"))
+        {
+            gpsData.posType = 55;  // INS_RTKFLOAT from spec
+            gpsData.fixQuality = 5;  // RTK Float
+        }
+        else if (fieldStartsWith(fieldRefs[11], "INS_PSRDIFF"))
+        {
+            gpsData.posType = 54;  // INS_PSRDIFF from spec
+            gpsData.fixQuality = 2;  // DGPS
+        }
+        else if (fieldStartsWith(fieldRefs[11], "INS_PSRSP"))
+        {
+            gpsData.posType = 53;  // INS_PSRSP from spec
+            gpsData.fixQuality = 1;  // Basic GPS
+        }
+        else if (fieldStartsWith(fieldRefs[2], "INS"))
+        {
+            gpsData.posType = 52;  // INS only from spec
+            gpsData.fixQuality = 1;  // Basic fix
+        }
+        else
+        {
+            gpsData.posType = 0;  // NONE
+            if (insValid) gpsData.fixQuality = 1;  // Keep INS status based quality
         }
     }
     
     // Field 12: Latitude (degrees)
-    if (strlen(fields[12]) > 0)
+    if (fieldRefs[12].length > 0)
     {
-        if (insAligning) {
-            // Use Greenwich Observatory coordinates while aligning
-            gpsData.latitude = 51.4779;  // Greenwich Observatory latitude
-        } else {
-            gpsData.latitude = parseFloat(fields[12]);
-        }
-        // Only mark as having position if not aligning and coords are not 0,0
-        gpsData.hasPosition = !insAligning && 
+        gpsData.latitude = parseDoubleZeroCopy(fieldRefs[12]);
+        gpsData.hasPosition = insValid && 
                              (gpsData.latitude != 0.0 || gpsData.longitude != 0.0);
     }
     
     // Field 13: Longitude (degrees)
-    if (strlen(fields[13]) > 0)
+    if (fieldRefs[13].length > 0)
     {
-        if (insAligning) {
-            // Use Greenwich Observatory coordinates while aligning
-            gpsData.longitude = -0.0015;  // Greenwich Observatory longitude (slightly west)
-        } else {
-            gpsData.longitude = parseFloat(fields[13]);
-        }
+        gpsData.longitude = parseDoubleZeroCopy(fieldRefs[13]);
+    }
+    
+    // Cache NMEA format coordinates
+    if (gpsData.hasPosition) {
+        cacheNMEACoordinates(gpsData.latitude, gpsData.longitude);
     }
     
     // Field 14: Height (meters)
-    if (strlen(fields[14]) > 0)
+    if (fieldRefs[14].length > 0)
     {
-        if (insAligning) {
-            gpsData.altitude = 100.0;  // Distinctive altitude for aligning state
-        } else {
-            gpsData.altitude = parseFloat(fields[14]);
-        }
+        gpsData.altitude = parseFloatZeroCopy(fieldRefs[14]);
     }
     
-    // Field 15: Undulation (skip)
-    // Field 16,17,18: North, East, Up velocities (m/s)
-    if (strlen(fields[16]) > 0 && strlen(fields[17]) > 0 && strlen(fields[18]) > 0)
+    // Field 15,16,17: North, East, Up velocities (m/s)
+    if (fieldRefs[15].length > 0 && fieldRefs[16].length > 0 && fieldRefs[17].length > 0)
     {
-        gpsData.northVelocity = parseFloat(fields[16]);
-        gpsData.eastVelocity = parseFloat(fields[17]);
-        gpsData.upVelocity = parseFloat(fields[18]);
+        gpsData.northVelocity = parseFloatZeroCopy(fieldRefs[15]);
+        gpsData.eastVelocity = parseFloatZeroCopy(fieldRefs[16]);
+        gpsData.upVelocity = parseFloatZeroCopy(fieldRefs[17]);
         
         // Calculate speed in knots from north/east velocities
         float speedMs = sqrt(gpsData.northVelocity * gpsData.northVelocity + 
@@ -941,11 +1113,17 @@ bool GNSSProcessor::parseINSPVAXA()
     }
     
     // Field 19,20,21: Roll, Pitch, Azimuth (degrees)
-    if (strlen(fields[19]) > 0 && strlen(fields[20]) > 0 && strlen(fields[21]) > 0)
+    if (fieldRefs[19].length > 0 && fieldRefs[20].length > 0 && fieldRefs[21].length > 0)
     {
-        gpsData.insRoll = parseFloat(fields[19]);
-        gpsData.insPitch = parseFloat(fields[20]);
-        gpsData.insHeading = parseFloat(fields[21]);
+        float roll = parseFloatZeroCopy(fieldRefs[19]);
+        float pitch = parseFloatZeroCopy(fieldRefs[20]);
+        float azimuth = parseFloatZeroCopy(fieldRefs[21]);
+        
+        // Debug logging removed - axis mapping confirmed working
+        
+        gpsData.insRoll = roll;
+        gpsData.insPitch = pitch;
+        gpsData.insHeading = azimuth;
         
         // For UM981, use INS heading/roll as dual antenna data
         gpsData.dualHeading = gpsData.insHeading;
@@ -953,61 +1131,81 @@ bool GNSSProcessor::parseINSPVAXA()
         gpsData.hasDualHeading = true;
     }
     
-    // Field 22: Reserved (skip)
-    // Field 23,24,25: Position StdDev (lat, lon, height) in meters  
-    if (strlen(fields[23]) > 0 && strlen(fields[24]) > 0 && strlen(fields[25]) > 0)
+    // Field 22,23,24: Position StdDev (lat, lon, height) in meters  
+    if (fieldRefs[22].length > 0 && fieldRefs[23].length > 0 && fieldRefs[24].length > 0)
     {
-        gpsData.posStdDevLat = parseFloat(fields[23]);
-        gpsData.posStdDevLon = parseFloat(fields[24]);
-        gpsData.posStdDevAlt = parseFloat(fields[25]);
+        gpsData.posStdDevLat = parseFloatZeroCopy(fieldRefs[22]);
+        gpsData.posStdDevLon = parseFloatZeroCopy(fieldRefs[23]);
+        gpsData.posStdDevAlt = parseFloatZeroCopy(fieldRefs[24]);
     }
     
-    // Field 26,27,28: Velocity StdDev (north, east, up) in m/s
-    if (strlen(fields[26]) > 0 && strlen(fields[27]) > 0 && strlen(fields[28]) > 0)
+    // Field 25,26,27: Velocity StdDev (north, east, up) in m/s
+    if (fieldRefs[25].length > 0 && fieldRefs[26].length > 0 && fieldRefs[27].length > 0)
     {
-        gpsData.velStdDevNorth = parseFloat(fields[26]);
-        gpsData.velStdDevEast = parseFloat(fields[27]);
-        gpsData.velStdDevUp = parseFloat(fields[28]);
+        gpsData.velStdDevNorth = parseFloatZeroCopy(fieldRefs[25]);
+        gpsData.velStdDevEast = parseFloatZeroCopy(fieldRefs[26]);
+        gpsData.velStdDevUp = parseFloatZeroCopy(fieldRefs[27]);
     }
     
-    // Set fix quality and other parameters based on INS status
-    if (insAligning) {
-        gpsData.fixQuality = 0;     // No fix while aligning
-        gpsData.posType = 0;        // No position type
-        gpsData.insStatus = 0;      // INS not ready
-        gpsData.numSatellites = 0;  // No solution yet
-        gpsData.hdop = 99.9f;       // Poor HDOP
-        
-        // Important: Mark that we have INS/dual antenna system
-        // This allows PAOGI messages to be sent even without fix
-        gpsData.hasINS = true;
-        gpsData.hasDualHeading = true;
-        
-        // Clear position but keep message tracking
-        gpsData.hasPosition = false;
-    } else {
-        gpsData.fixQuality = 1;     // Good INS solution (will be updated based on position type)
-        gpsData.posType = 16;       // INS position
-        gpsData.insStatus = 1;      // Mark as having INS
-        gpsData.numSatellites = 12; // Typical for INS solution
-        gpsData.hdop = 0.9f;        // Good HDOP for INS solution
-        gpsData.hasINS = true;
-        gpsData.hasDualHeading = true;
+    // Field 28: Extended solution status
+    if (fieldCount > 28 && fieldRefs[28].length > 0)
+    {
+        gpsData.extSolStatus = (uint16_t)parseIntZeroCopy(fieldRefs[28]);
     }
     
-    // Set GPS time from fields 5,6 (week, seconds) from header
-    if (strlen(fields[5]) > 0 && strlen(fields[6]) > 0)
+    // Field 32: Contains time since update followed by *checksum
+    // Format: "value*checksum" e.g. "0*cd793b60"
+    if (fieldCount > 32 && fieldRefs[32].length > 0)
+    {
+        // Find the asterisk position
+        const char* asteriskPos = nullptr;
+        for (int i = 0; i < fieldRefs[32].length; i++) {
+            if (fieldRefs[32].start[i] == '*') {
+                asteriskPos = &fieldRefs[32].start[i];
+                break;
+            }
+        }
+        
+        if (asteriskPos) {
+            // Extract the number before the asterisk
+            int valueLen = asteriskPos - fieldRefs[32].start;
+            if (valueLen > 0) {
+                FieldRef timeField;
+                timeField.start = fieldRefs[32].start;
+                timeField.length = valueLen;
+                gpsData.timeSinceUpdate = (uint32_t)parseIntZeroCopy(timeField);
+                
+                if (enableDebug) {
+                    LOG_DEBUG(EventSource::GNSS, "INSPVAXA: Time since update = %u seconds", gpsData.timeSinceUpdate);
+                }
+                
+                // Use time since update as age of DGPS for PAOGI message
+                gpsData.ageDGPS = (uint16_t)gpsData.timeSinceUpdate;
+            }
+        }
+    }
+    
+    // Set number of satellites (not directly available in INSPVAXA, use a reasonable value)
+    gpsData.numSatellites = 12; // Typical for INS solution
+    gpsData.hdop = 0.9f; // Good HDOP for INS solution
+    gpsData.insStatus = 1; // Mark as having INS
+    gpsData.hasINS = true;
+    
+    // GPS time from header fields 5 (week) and 6 (seconds)
+    if (fieldRefs[5].length > 0 && fieldRefs[6].length > 0)
     {
         // Store GPS week and seconds for UTC conversion
-        gpsData.gpsWeek = (uint16_t)atoi(fields[5]);
-        gpsData.gpsSeconds = parseFloat(fields[6]);
+        gpsData.gpsWeek = (uint16_t)parseIntZeroCopy(fieldRefs[5]);
+        gpsData.gpsSeconds = parseFloatZeroCopy(fieldRefs[6]);
         
         // Also store as fixTime for compatibility
         float seconds = gpsData.gpsSeconds;
         int hours = (int)(seconds / 3600) % 24;
         int minutes = (int)((seconds - hours * 3600) / 60);
-        int secs = (int)(seconds) % 60;
-        gpsData.fixTime = hours * 10000 + minutes * 100 + secs;
+        float secs = seconds - hours * 3600 - minutes * 60;
+        int intSecs = (int)secs;
+        gpsData.fixTime = hours * 10000 + minutes * 100 + intSecs;
+        gpsData.fixTimeFractional = secs - intSecs;
     }
     
     gpsData.hasINS = true;
@@ -1038,8 +1236,8 @@ bool GNSSProcessor::parseINSPVAXA()
 // External reference to NetworkBase send function
 extern void sendUDPbytes(uint8_t *message, int msgLen);
 
-// External network config
-extern struct NetworkConfig netConfig;
+// Get ConfigManager instance
+extern ConfigManager configManager;
 
 // Removed registerPGNCallbacks - broadcast PGNs are handled automatically
 
@@ -1068,18 +1266,21 @@ void GNSSProcessor::handleBroadcastPGN(uint8_t pgn, const uint8_t* data, size_t 
         // Subnet GPS reply format from PGN.md:
         // Src: 0x78 (120), PGN: 0xCB (203), Len: 7
         // IP_One, IP_Two, IP_Three, IP_Four, Subnet_One, Subnet_Two, Subnet_Three
+        uint8_t ip[4];
+        configManager.getIPAddress(ip);
+        
         uint8_t subnetReply[] = {
             0x80, 0x81,              // PGN header
             GPS_SOURCE_ID,           // Source: 0x78 (120)
             0xCB,                    // PGN: 203
             7,                       // Data length
-            netConfig.currentIP[0],  // IP_One
-            netConfig.currentIP[1],  // IP_Two
-            netConfig.currentIP[2],  // IP_Three
-            netConfig.currentIP[3],  // IP_Four
-            netConfig.currentIP[0],  // Subnet_One
-            netConfig.currentIP[1],  // Subnet_Two
-            netConfig.currentIP[2],  // Subnet_Three
+            ip[0],  // IP_One
+            ip[1],  // IP_Two
+            ip[2],  // IP_Three
+            ip[3],  // IP_Four
+            ip[0],  // Subnet_One
+            ip[1],  // Subnet_Two
+            ip[2],  // Subnet_Three
             0                        // CRC placeholder
         };
         
@@ -1103,30 +1304,22 @@ void GNSSProcessor::sendGPSData()
     // Format is defined in PGN.md - Main Antenna section
 }
 
-void GNSSProcessor::sendNMEAViaUDP()
+void GNSSProcessor::sendCompleteNMEA()
 {
-    // Send raw NMEA sentence directly to AgIO when passthrough is enabled
-    // This bypasses PANDA/PAOGI formatting and sends the original GPS data
+    // Send complete NMEA sentence including checksum with CRLF appended
+    // This is called when UDP passthrough is enabled
+    // The parseBuffer contains the complete sentence including $ or #, data, *, and checksum
     
-    if (!udpPassthroughEnabled || bufferIndex == 0)
+    if (bufferIndex == 0) {
         return;
-    
-    // Build complete sentence with checksum and CRLF
-    uint8_t sentence[310];  // 300 for parseBuffer + 10 extra for checksum and CRLF
-    
-    // Copy the sentence data
-    memcpy(sentence, parseBuffer, bufferIndex);
-    int len = bufferIndex;
-    
-    // Add asterisk if not present
-    if (sentence[len-1] != '*') {
-        sentence[len++] = '*';
     }
     
-    // Add checksum (2 hex digits)
-    uint8_t checksum = calculatedChecksum;
-    sentence[len++] = "0123456789ABCDEF"[(checksum >> 4) & 0x0F];
-    sentence[len++] = "0123456789ABCDEF"[checksum & 0x0F];
+    // Build complete sentence with CRLF
+    uint8_t sentence[310];  // 300 for parseBuffer + 10 extra for CRLF
+    
+    // Copy the complete sentence (includes $/#, data, *, and checksum)
+    memcpy(sentence, parseBuffer, bufferIndex);
+    int len = bufferIndex;
     
     // Add CRLF
     sentence[len++] = '\r';
@@ -1136,8 +1329,430 @@ void GNSSProcessor::sendNMEAViaUDP()
     sendUDPbytes(sentence, len);
     
     // Debug logging
-    if (enableDebug) {
-        sentence[len-2] = '\0';  // Null terminate for logging (remove CRLF)
-        LOG_DEBUG(EventSource::GNSS, "UDP Passthrough: %s", sentence);
+    static uint32_t lastPassthroughLog = 0;
+    static uint32_t passthroughCount = 0;
+    passthroughCount++;
+    
+    if (millis() - lastPassthroughLog > 5000) {
+        lastPassthroughLog = millis();
+        LOG_DEBUG(EventSource::GNSS, "UDP Passthrough: %lu sentences sent", passthroughCount);
+        passthroughCount = 0;
     }
 }
+
+GNSSProcessor::MessageType GNSSProcessor::detectMessageType(const char* msgType) {
+    // Fast message type detection using character comparison
+    // Skip past the talker ID (GP, GN, etc.) if present
+    const char* typeStart = msgType;
+    
+    // Find where the actual message type starts (after talker ID)
+    if (strlen(msgType) >= 5) {
+        // Standard NMEA has 2-char talker ID
+        if (msgType[2] >= 'A' && msgType[2] <= 'Z') {
+            typeStart = msgType + 2;
+        }
+    }
+    
+    // Now do fast character comparison
+    switch(typeStart[0]) {
+        case 'G':
+            if (typeStart[1] == 'G' && typeStart[2] == 'A') return MSG_GGA;
+            if (typeStart[1] == 'N' && typeStart[2] == 'S') return MSG_GNS;
+            break;
+            
+        case 'V':
+            if (typeStart[1] == 'T' && typeStart[2] == 'G') return MSG_VTG;
+            break;
+            
+        case 'R':
+            if (typeStart[1] == 'M' && typeStart[2] == 'C') return MSG_RMC;
+            break;
+            
+        case 'H':
+            if (typeStart[1] == 'P' && typeStart[2] == 'R') return MSG_HPR;
+            break;
+            
+        case 'K':
+            if (typeStart[1] == 'S' && typeStart[2] == 'X' && typeStart[3] == 'T') return MSG_KSXT;
+            break;
+            
+        case 'I':
+            if (strncmp(typeStart, "INSPVAA", 7) == 0) return MSG_INSPVAA;
+            if (strncmp(typeStart, "INSPVAXA", 8) == 0) return MSG_INSPVAXA;
+            break;
+            
+        case 'B':
+            if (strncmp(typeStart, "BESTGNSSPOS", 11) == 0) return MSG_BESTGNSSPOS;
+            break;
+            
+        case 'A':
+            if (typeStart[1] == 'V' && typeStart[2] == 'R') return MSG_AVR;
+            break;
+    }
+    
+    return MSG_UNKNOWN;
+}
+
+void GNSSProcessor::cacheNMEACoordinates(double lat, double lon) {
+    // Convert decimal degrees to NMEA format for caching
+    
+    // Latitude
+    gpsData.latDir = (lat < 0) ? 'S' : 'N';
+    double absLat = fabs(lat);
+    int latDegrees = (int)absLat;
+    double latMinutes = (absLat - latDegrees) * 60.0;
+    gpsData.latitudeNMEA = latDegrees * 100.0 + latMinutes;
+    
+    // Longitude
+    gpsData.lonDir = (lon < 0) ? 'W' : 'E';
+    double absLon = fabs(lon);
+    int lonDegrees = (int)absLon;
+    double lonMinutes = (absLon - lonDegrees) * 60.0;
+    gpsData.longitudeNMEA = lonDegrees * 100.0 + lonMinutes;
+}
+
+void GNSSProcessor::parseFieldsZeroCopy() {
+    fieldCount = 0;
+    
+    // Skip the '$' or '#' and start parsing
+    const char* fieldStart = parseBuffer + 1;
+    
+    for (int i = 1; i < bufferIndex && fieldCount < 35; i++) {
+        char c = parseBuffer[i];
+        
+        if (c == ',' || c == ';' || c == '\0') {
+            // Found end of field
+            fieldRefs[fieldCount].start = fieldStart;
+            fieldRefs[fieldCount].length = (parseBuffer + i) - fieldStart;
+            fieldCount++;
+            
+            // Next field starts after the delimiter
+            fieldStart = parseBuffer + i + 1;
+        }
+    }
+    
+    // Handle the last field if buffer doesn't end with delimiter
+    if (fieldStart < parseBuffer + bufferIndex && fieldCount < 35) {
+        fieldRefs[fieldCount].start = fieldStart;
+        fieldRefs[fieldCount].length = (parseBuffer + bufferIndex) - fieldStart;
+        fieldCount++;
+    }
+}
+
+// Zero-copy utility functions
+float GNSSProcessor::parseFloatZeroCopy(const FieldRef& field) {
+    if (field.length == 0) return 0.0f;
+    
+    // Temporarily null-terminate the field
+    char saved = field.start[field.length];
+    const_cast<char*>(field.start)[field.length] = '\0';
+    float result = atof(field.start);
+    const_cast<char*>(field.start)[field.length] = saved;
+    
+    return result;
+}
+
+double GNSSProcessor::parseDoubleZeroCopy(const FieldRef& field) {
+    if (field.length == 0) return 0.0;
+    
+    // Temporarily null-terminate the field
+    char saved = field.start[field.length];
+    const_cast<char*>(field.start)[field.length] = '\0';
+    double result = atof(field.start);
+    const_cast<char*>(field.start)[field.length] = saved;
+    
+    return result;
+}
+
+int GNSSProcessor::parseIntZeroCopy(const FieldRef& field) {
+    if (field.length == 0) return 0;
+    
+    // Temporarily null-terminate the field
+    char saved = field.start[field.length];
+    const_cast<char*>(field.start)[field.length] = '\0';
+    int result = atoi(field.start);
+    const_cast<char*>(field.start)[field.length] = saved;
+    
+    return result;
+}
+
+bool GNSSProcessor::fieldEquals(const FieldRef& field, const char* str) {
+    size_t len = strlen(str);
+    if (field.length != len) return false;
+    return strncmp(field.start, str, len) == 0;
+}
+
+bool GNSSProcessor::fieldStartsWith(const FieldRef& field, const char* prefix) {
+    size_t len = strlen(prefix);
+    if (field.length < len) return false;
+    return strncmp(field.start, prefix, len) == 0;
+}
+
+double GNSSProcessor::parseLatitudeZeroCopy(const FieldRef& lat, const FieldRef& ns) {
+    if (lat.length < 4 || ns.length < 1) return 0.0;
+    
+    // Cache the original NMEA value and direction
+    gpsData.latitudeNMEA = parseDoubleZeroCopy(lat);
+    gpsData.latDir = ns.start[0];
+    
+    double degrees = gpsData.latitudeNMEA / 100.0;
+    int wholeDegrees = (int)degrees;
+    double minutes = (degrees - wholeDegrees) * 100.0;
+    
+    double result = wholeDegrees + (minutes / 60.0);
+    
+    if (ns.start[0] == 'S')
+        result = -result;
+        
+    return result;
+}
+
+double GNSSProcessor::parseLongitudeZeroCopy(const FieldRef& lon, const FieldRef& ew) {
+    if (lon.length < 5 || ew.length < 1) return 0.0;
+    
+    // Cache the original NMEA value and direction
+    gpsData.longitudeNMEA = parseDoubleZeroCopy(lon);
+    gpsData.lonDir = ew.start[0];
+    
+    double degrees = gpsData.longitudeNMEA / 100.0;
+    int wholeDegrees = (int)degrees;
+    double minutes = (degrees - wholeDegrees) * 100.0;
+    
+    double result = wholeDegrees + (minutes / 60.0);
+    
+    if (ew.start[0] == 'W')
+        result = -result;
+        
+    return result;
+}
+
+bool GNSSProcessor::parseGGAZeroCopy() {
+    if (fieldCount < 9)
+        return false;
+
+    // Field 1: Time (HHMMSS.SS format)
+    if (fieldRefs[1].length > 0) {
+        float time = parseFloatZeroCopy(fieldRefs[1]);
+        gpsData.fixTime = (uint32_t)time;
+        gpsData.fixTimeFractional = time - (uint32_t)time;
+    }
+
+    // Fields 2-3: Latitude
+    gpsData.latitude = parseLatitudeZeroCopy(fieldRefs[2], fieldRefs[3]);
+
+    // Fields 4-5: Longitude
+    gpsData.longitude = parseLongitudeZeroCopy(fieldRefs[4], fieldRefs[5]);
+
+    // Field 6: Fix quality
+    if (fieldRefs[6].length > 0) {
+        gpsData.fixQuality = fieldRefs[6].start[0] - '0';  // Direct digit conversion
+    }
+
+    // Field 7: Number of satellites
+    gpsData.numSatellites = parseIntZeroCopy(fieldRefs[7]);
+
+    // Field 8: HDOP
+    gpsData.hdop = parseFloatZeroCopy(fieldRefs[8]);
+
+    // Field 9: Altitude
+    if (fieldCount > 9) {
+        gpsData.altitude = parseFloatZeroCopy(fieldRefs[9]);
+    }
+
+    // Field 13: Age of DGPS
+    if (fieldCount > 13) {
+        gpsData.ageDGPS = parseIntZeroCopy(fieldRefs[13]);
+    }
+
+    // Set status flags
+    gpsData.hasPosition = (gpsData.latitude != 0.0 || gpsData.longitude != 0.0) && 
+                         gpsData.fixQuality >= 1;
+    gpsData.isValid = gpsData.hasPosition;  // GGA messages need valid flag
+    gpsData.lastUpdateTime = millis();
+    gpsData.messageTypeMask |= (1 << 0);  // Set GGA bit
+    
+    // Check for duplicate position
+    if (gpsData.latitude == lastGGALatitude && 
+        gpsData.longitude == lastGGALongitude && 
+        lastGGALatitude != 0.0) {  // Don't log on first valid position
+        static uint32_t lastDuplicateLog = 0;
+        if (millis() - lastDuplicateLog > 5000) {  // Log every 5 seconds max
+            lastDuplicateLog = millis();
+            LOG_WARNING(EventSource::GNSS, "GGA: Duplicate position detected: %.8f, %.8f", 
+                       gpsData.latitude, gpsData.longitude);
+        }
+    }
+    
+    // Update last position
+    lastGGALatitude = gpsData.latitude;
+    lastGGALongitude = gpsData.longitude;
+
+    if (enableDebug) {
+        logDebug("GGA processed (zero-copy)");
+    }
+
+    return true;
+}
+
+bool GNSSProcessor::parseGNSZeroCopy() {
+    if (fieldCount < 9)
+        return false;
+
+    // Field 1: Time (HHMMSS.SS format)
+    if (fieldRefs[1].length > 0) {
+        float time = parseFloatZeroCopy(fieldRefs[1]);
+        gpsData.fixTime = (uint32_t)time;
+        gpsData.fixTimeFractional = time - (uint32_t)time;
+    }
+
+    // Fields 2-3: Latitude
+    gpsData.latitude = parseLatitudeZeroCopy(fieldRefs[2], fieldRefs[3]);
+
+    // Fields 4-5: Longitude
+    gpsData.longitude = parseLongitudeZeroCopy(fieldRefs[4], fieldRefs[5]);
+
+    // Field 6: Mode indicator (convert to fix quality)
+    if (fieldRefs[6].length > 0) {
+        // GNS mode is a string like "AAN" where each char represents GPS/GLONASS/Galileo
+        // Convert first character to fix quality
+        char mode = fieldRefs[6].start[0];
+        switch(mode) {
+            case 'N': gpsData.fixQuality = 0; break;  // No fix
+            case 'A': gpsData.fixQuality = 1; break;  // Autonomous
+            case 'D': gpsData.fixQuality = 2; break;  // Differential
+            case 'P': gpsData.fixQuality = 3; break;  // Precise
+            case 'R': gpsData.fixQuality = 4; break;  // RTK Fixed
+            case 'F': gpsData.fixQuality = 5; break;  // RTK Float
+            default:  gpsData.fixQuality = 0; break;
+        }
+    }
+
+    // Field 7: Number of satellites
+    if (fieldCount > 7 && fieldRefs[7].length > 0) {
+        gpsData.numSatellites = parseIntZeroCopy(fieldRefs[7]);
+    }
+    
+    // Field 8: HDOP
+    if (fieldCount > 8 && fieldRefs[8].length > 0) {
+        gpsData.hdop = parseFloatZeroCopy(fieldRefs[8]);
+    }
+
+    // Field 9: Altitude
+    if (fieldCount > 9 && fieldRefs[9].length > 0) {
+        gpsData.altitude = parseFloatZeroCopy(fieldRefs[9]);
+    }
+
+    // Field 12: Age of DGPS (optional)
+    if (fieldCount > 12 && fieldRefs[12].length > 0) {
+        gpsData.ageDGPS = parseIntZeroCopy(fieldRefs[12]);
+    }
+
+    // Set status flags
+    gpsData.hasPosition = (gpsData.latitude != 0.0 || gpsData.longitude != 0.0) && 
+                         gpsData.fixQuality >= 1;
+    gpsData.isValid = gpsData.hasPosition;  // GNS messages need valid flag
+    gpsData.lastUpdateTime = millis();
+    gpsData.messageTypeMask |= (1 << 1);  // Set GNS bit
+
+    if (enableDebug) {
+        logDebug("GNS processed (zero-copy)");
+    }
+
+    return true;
+}
+
+bool GNSSProcessor::parseVTGZeroCopy() {
+    if (fieldCount < 8)
+        return false;
+
+    // Field 1: Track made good (true)
+    if (fieldRefs[1].length > 0) {
+        gpsData.headingTrue = parseFloatZeroCopy(fieldRefs[1]);
+    }
+
+    // Field 5: Speed over ground in knots
+    if (fieldRefs[5].length > 0) {
+        gpsData.speedKnots = parseFloatZeroCopy(fieldRefs[5]);
+        gpsData.hasVelocity = true;
+    }
+
+    // Field 7: Speed over ground in km/h (optional check)
+    // We use knots, but can validate if both are present
+
+    // Set status flags
+    // VTG doesn't contain position data, so don't update lastUpdateTime
+    gpsData.messageTypeMask |= (1 << 2);  // Set VTG bit
+
+    if (enableDebug) {
+        logDebug("VTG processed (zero-copy)");
+    }
+
+    return true;
+}
+
+bool GNSSProcessor::parseHPRZeroCopy() {
+    // HPR format: $GNHPR,time,heading,pitch,roll,quality,satellites,age,reserved*checksum
+    // Minimum 8 fields after message type
+    if (fieldCount < 8)
+        return false;
+
+    // Field 1: Time (HHMMSS.SS format)
+    if (fieldRefs[1].length > 0) {
+        float time = parseFloatZeroCopy(fieldRefs[1]);
+        gpsData.fixTime = (uint32_t)time;
+        gpsData.fixTimeFractional = time - (uint32_t)time;
+    }
+
+    // Field 2: Heading (degrees)
+    if (fieldRefs[2].length > 0) {
+        gpsData.dualHeading = parseFloatZeroCopy(fieldRefs[2]);
+    }
+    
+    // Field 3: Pitch (degrees) - used as roll for AgOpenGPS
+    if (fieldRefs[3].length > 0) {
+        gpsData.dualRoll = parseFloatZeroCopy(fieldRefs[3]);  // Pitch is used as roll in AOG
+    }
+
+    // Field 4: Roll (degrees) - not used by AgOpenGPS
+    // Skip this field
+
+    // Field 5: Heading quality (0=no fix, 1=single, 2=float RTK, 4=RTK fixed)
+    if (fieldRefs[5].length > 0) {
+        gpsData.headingQuality = parseIntZeroCopy(fieldRefs[5]);
+    }
+
+    // Field 6: Number of satellites
+    if (fieldRefs[6].length > 0) {
+        gpsData.numSatellites = parseIntZeroCopy(fieldRefs[6]);
+    }
+
+    // Field 7: Age (seconds)
+    if (fieldRefs[7].length > 0) {
+        gpsData.ageDGPS = (uint16_t)(parseFloatZeroCopy(fieldRefs[7]) * 100); // Convert to centiseconds
+    }
+
+    // Field 8: Reserved - skip
+
+    // Always set hasDualHeading for HPR messages
+    gpsData.hasDualHeading = true;
+    
+    // HPR doesn't provide position data, only heading/roll
+    // Don't set hasPosition based on HPR alone
+    
+    // Set valid and update time
+    gpsData.isValid = true;  // HPR messages are valid even without position
+    // HPR doesn't contain position data, so don't update lastUpdateTime
+    gpsData.messageTypeMask |= (1 << 4);  // Set HPR bit
+
+    // Debug log
+    LOG_DEBUG(EventSource::GNSS, "HPR: Setting hasDualHeading=true, heading=%.1f, roll=%.1f, quality=%d", 
+              gpsData.dualHeading, gpsData.dualRoll, gpsData.headingQuality);
+
+    if (enableDebug) {
+        LOG_DEBUG(EventSource::GNSS, "HPR processed: sats=%d, age=%.2f", 
+                  gpsData.numSatellites, gpsData.ageDGPS / 100.0f);
+    }
+
+    return true;
+}
+

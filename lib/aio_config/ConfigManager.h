@@ -5,6 +5,58 @@
 #include <EEPROM.h>
 #include "EEPROMLayout.h"
 
+// CAN bus functions
+enum class CANFunction : uint8_t {
+    NONE = 0,
+    KEYA = 1,
+    V_BUS = 2,
+    ISO_BUS = 3,
+    K_BUS = 4
+};
+
+enum class CANBusName : uint8_t {
+    NONE = 0,
+    V_BUS = 1,
+    K_BUS = 2,
+    ISO_BUS = 3
+};
+
+// CAN Steer configuration structure
+struct CANSteerConfig {
+    // Brand selection
+    uint8_t brand = 9;          // 0=Disabled, 1=Fendt, 2=Valtra, etc, 9=Generic (default)
+
+    // CAN1 configuration
+    uint8_t can1Speed = 0;      // 0=250k, 1=500k
+    uint8_t can1Function = 0;   // CANFunction enum
+    uint8_t can1Name = 0;       // 0=None, 1=V_Bus, 2=K_Bus, 3=ISO_Bus
+
+    // CAN2 configuration
+    uint8_t can2Speed = 0;      // 0=250k, 1=500k
+    uint8_t can2Function = 0;   // CANFunction enum
+    uint8_t can2Name = 0;       // 0=None, 1=V_Bus, 2=K_Bus, 3=ISO_Bus
+
+    // CAN3 configuration
+    uint8_t can3Speed = 0;      // 0=250k, 1=500k
+    uint8_t can3Function = 0;   // CANFunction enum
+    uint8_t can3Name = 0;       // 0=None, 1=V_Bus, 2=K_Bus, 3=ISO_Bus
+
+    uint8_t moduleID = 0x1C;    // Module ID for protocols that need it
+    uint8_t reserved[1];        // Future expansion
+};
+
+// ConfigManager Pattern for PGN Settings Access
+// ============================================
+// All runtime access to PGN settings should go through ConfigManager methods.
+// Direct access to PGN data structures (e.g., steerSettings, machineConfig)
+// should only be used for:
+// 1. Parsing incoming PGN data
+// 2. Initial loading from ConfigManager to structs
+// 3. Logging what was received
+//
+// This ensures settings can be changed at runtime and take effect immediately.
+// The structs are maintained for backward compatibility and PGN parsing.
+
 class ConfigManager
 {
 private:
@@ -51,6 +103,11 @@ private:
     uint8_t raiseTime;
     uint8_t lowerTime;
     bool isPinActiveHigh;
+    bool sectionControlSleepMode;  // If true, onboard SC goes silent when external SC detected
+    uint8_t user1;
+    uint8_t user2;
+    uint8_t user3;
+    uint8_t user4;
 
     // KWAS configuration (EEPROM 600-699)
     bool kwasEnabled;
@@ -74,13 +131,20 @@ private:
     // LED settings
     uint8_t ledBrightness;
     
+    // Buzzer settings
+    bool buzzerLoudMode;         // true = loud for field use, false = quiet for development
+    
     // Turn sensor configuration
-    uint8_t turnSensorType;      // 0=None, 1=Encoder, 2=Pressure, 3=Current
+    uint8_t turnSensorType;      // 0=None, 1=Encoder, 2=Pressure, 3=Current, 4=JD PWM
     uint8_t encoderType;         // 1=Single, 2=Quadrature
     uint8_t turnMaxPulseCount;   // Max encoder pulses before kickout
     uint8_t pressureThreshold;   // Pressure sensor threshold
     uint8_t currentThreshold;    // Current sensor threshold
     uint16_t currentZeroOffset;  // Current sensor zero offset
+    
+    // John Deere PWM encoder configuration
+    bool jdPWMEnabled;           // Enable JD PWM mode for pressure input
+    uint8_t jdPWMSensitivity;    // JD PWM sensitivity 1-10 (1=least sensitive, 10=most sensitive)
     
     // Analog work switch configuration
     bool analogWorkSwitchEnabled;
@@ -88,8 +152,22 @@ private:
     uint8_t workSwitchHysteresis;   // 5-25% stored as 5-25
     bool invertWorkSwitch;
     
+    // Network configuration
+    uint8_t ipAddress[4];
+    uint8_t subnet[4];
+    uint8_t gateway[4];
+    uint8_t dns[4];
+    uint8_t destIP[4];
+    uint16_t destPort;
+    
     // Version control
     uint16_t eeVersion;
+
+    // CAN Steer configuration
+    CANSteerConfig canSteerConfig;
+
+    // Initialization tracking
+    bool initialized;
 
 public:
     ConfigManager();
@@ -97,7 +175,7 @@ public:
 
     // Singleton access
     static ConfigManager *getInstance();
-    static void init();
+    void init();
 
     // Steer configuration methods
     bool getInvertWAS() const { return invertWAS; }
@@ -155,6 +233,10 @@ public:
         ledBrightness = constrain(value, 5, 100); 
     }
     
+    // Buzzer configuration
+    bool getBuzzerLoudMode() const { return buzzerLoudMode; }
+    void setBuzzerLoudMode(bool value) { buzzerLoudMode = value; }
+    
     // GPS configuration methods
     uint32_t getGPSBaudRate() const { return gpsBaudRate; }
     void setGPSBaudRate(uint32_t value) { gpsBaudRate = value; }
@@ -180,6 +262,16 @@ public:
     void setLowerTime(uint8_t value) { lowerTime = value; }
     bool getIsPinActiveHigh() const { return isPinActiveHigh; }
     void setIsPinActiveHigh(bool value) { isPinActiveHigh = value; }
+    bool getSectionControlSleepMode() const { return sectionControlSleepMode; }
+    void setSectionControlSleepMode(bool value) { sectionControlSleepMode = value; }
+    uint8_t getUser1() const { return user1; }
+    void setUser1(uint8_t value) { user1 = value; }
+    uint8_t getUser2() const { return user2; }
+    void setUser2(uint8_t value) { user2 = value; }
+    uint8_t getUser3() const { return user3; }
+    void setUser3(uint8_t value) { user3 = value; }
+    uint8_t getUser4() const { return user4; }
+    void setUser4(uint8_t value) { user4 = value; }
 
     // KWAS configuration methods
     bool getKWASEnabled() const { return kwasEnabled; }
@@ -228,6 +320,12 @@ public:
     void setCurrentThreshold(uint8_t value) { currentThreshold = value; }
     uint16_t getCurrentZeroOffset() const { return currentZeroOffset; }
     void setCurrentZeroOffset(uint16_t value) { currentZeroOffset = value; }
+    
+    // John Deere PWM encoder methods
+    bool getJDPWMEnabled() const { return jdPWMEnabled; }
+    void setJDPWMEnabled(bool value) { jdPWMEnabled = value; }
+    uint8_t getJDPWMSensitivity() const { return jdPWMSensitivity; }
+    void setJDPWMSensitivity(uint8_t value) { jdPWMSensitivity = constrain(value, 1, 10); }
 
     // Analog work switch methods
     bool getAnalogWorkSwitchEnabled() const { return analogWorkSwitchEnabled; }
@@ -238,6 +336,20 @@ public:
     void setWorkSwitchHysteresis(uint8_t value) { workSwitchHysteresis = constrain(value, 5, 25); }
     bool getInvertWorkSwitch() const { return invertWorkSwitch; }
     void setInvertWorkSwitch(bool value) { invertWorkSwitch = value; }
+
+    // Network configuration methods
+    void getIPAddress(uint8_t* ip) const { memcpy(ip, ipAddress, 4); }
+    void setIPAddress(const uint8_t* ip) { memcpy(ipAddress, ip, 4); }
+    void getSubnet(uint8_t* sub) const { memcpy(sub, subnet, 4); }
+    void setSubnet(const uint8_t* sub) { memcpy(subnet, sub, 4); }
+    void getGateway(uint8_t* gw) const { memcpy(gw, gateway, 4); }
+    void setGateway(const uint8_t* gw) { memcpy(gateway, gw, 4); }
+    void getDNS(uint8_t* d) const { memcpy(d, dns, 4); }
+    void setDNS(const uint8_t* d) { memcpy(dns, d, 4); }
+    void getDestIP(uint8_t* dest) const { memcpy(dest, destIP, 4); }
+    void setDestIP(const uint8_t* dest) { memcpy(destIP, dest, 4); }
+    uint16_t getDestPort() const { return destPort; }
+    void setDestPort(uint16_t port) { destPort = port; }
 
     // EEPROM operations
     void saveSteerConfig();
@@ -256,11 +368,21 @@ public:
     void loadTurnSensorConfig();
     void saveAnalogWorkSwitchConfig();
     void loadAnalogWorkSwitchConfig();
+    void saveMiscConfig();
+    void loadMiscConfig();
+    void saveNetworkConfig();
+    void loadNetworkConfig();
     void loadAllConfigs();
     void saveAllConfigs();
     void resetToDefaults();
     bool checkVersion();
     void updateVersion();
+
+    // CAN Steer configuration methods
+    CANSteerConfig getCANSteerConfig() const;
+    void setCANSteerConfig(const CANSteerConfig& config);
+    void saveCANSteerConfig();
+    void loadCANSteerConfig();
 };
 
 #endif // CONFIGMANAGER_H_

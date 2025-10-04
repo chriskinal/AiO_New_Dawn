@@ -52,6 +52,12 @@ public:
         return (currentReading < 0) ? 0 : (uint16_t)currentReading;
     }
     
+    // JD PWM encoder methods
+    void setJDPWMMode(bool enabled);
+    bool isJDPWMMode() const { return jdPWMMode; }
+    uint32_t getJDPWMDutyTime() const { return jdPWMDutyTime; }
+    float getJDPWMPosition() const;  // Get wheel position 0-99%
+    
     // Configuration
     void setWASOffset(int16_t offset) { wasOffset = offset; }
     void setWASCountsPerDegree(float counts) { wasCountsPerDegree = counts; }
@@ -80,6 +86,10 @@ public:
     // Static instance for singleton pattern
     static ADProcessor* instance;
     static ADProcessor* getInstance();
+    
+    // JD PWM interrupt handlers (must be static for ISR)
+    static void jdPWMRisingISR();
+    static void jdPWMFallingISR();
 
 private:
     // Pin assignments from pcb.h
@@ -87,6 +97,7 @@ private:
     static constexpr uint8_t AD_WORK_PIN = A17;        // Work switch input (WORK_PIN from pcb.h)  
     static constexpr uint8_t AD_WAS_PIN = A15;         // WAS sensor input
     static constexpr uint8_t AD_KICKOUT_A_PIN = A12;   // Pressure sensor input (KICKOUT_A from pcb.h)
+    static constexpr uint8_t AD_KICKOUT_D_PIN = 3;     // Digital kickout input - used for JD PWM encoder
     static constexpr uint8_t AD_CURRENT_PIN = A13;     // Motor current sensor (CURRENT_PIN from pcb.h)
     
     // Switch debouncing structure
@@ -110,6 +121,18 @@ private:
     float pressureReading;  // Filtered pressure sensor reading
     uint16_t motorCurrentRaw;
     float currentReading;   // Filtered current sensor reading
+    
+    // JD PWM encoder data
+    bool jdPWMMode;         // True when in JD PWM mode
+    volatile uint32_t jdPWMDutyTime;     // Current PWM duty time in microseconds
+    volatile uint32_t jdPWMDutyTimePrev; // Previous PWM duty time
+    volatile uint32_t jdPWMRiseTime;     // Time of last rising edge
+    volatile uint32_t jdPWMPrevRiseTime; // Time of previous rising edge (for period)
+    volatile uint32_t jdPWMPeriod;       // Full PWM period in microseconds
+    volatile float jdPWMDutyPercent;     // Duty cycle percentage (0-100)
+    volatile float jdPWMDutyPercentPrev; // Previous duty cycle percentage
+    float jdPWMRollingAverage;           // Rolling average of duty time (microseconds)
+    float jdPWMDelta;                    // Difference from rolling average
     
     // Analog work switch mode
     bool analogWorkSwitchEnabled;

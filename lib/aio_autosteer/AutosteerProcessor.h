@@ -13,35 +13,8 @@ extern MotorDriverInterface motorDriver;
 
 class KickoutMonitor;
 
-// Steer Config structure (PGN 251)
-struct SteerConfig {
-    uint8_t InvertWAS;
-    uint8_t IsRelayActiveHigh;
-    uint8_t MotorDriveDirection;
-    uint8_t SingleInputWAS;
-    uint8_t CytronDriver;
-    uint8_t SteerSwitch;
-    uint8_t SteerButton;
-    uint8_t ShaftEncoder;
-    uint8_t PulseCountMax;
-    uint8_t MinSpeed;
-    uint8_t IsDanfoss;
-    uint8_t PressureSensor;
-    uint8_t CurrentSensor;
-    uint8_t IsUseY_Axis;
-    uint8_t MotorDriverConfig;  // From PGN251 Byte 8
-};
-
-// Steer Settings structure (PGN 252)
-struct SteerSettings {
-    uint8_t Kp;              // Raw value from AgOpenGPS (actual Kp * 10)
-    uint8_t highPWM;
-    uint8_t lowPWM;
-    uint8_t minPWM;
-    uint8_t steerSensorCounts;
-    int16_t wasOffset;
-    float AckermanFix;
-};
+// PGN data is parsed directly to ConfigManager
+// No intermediate structs needed
 
 class AutosteerProcessor {
 private:
@@ -54,8 +27,6 @@ private:
     AutosteerProcessor();
     
     // Configuration storage
-    SteerConfig steerConfig;
-    SteerSettings steerSettings;
     
     // State tracking
     bool autosteerEnabled = false;
@@ -74,9 +45,7 @@ private:
     uint32_t lastButtonDebounceTime = 0;  // Debounce timer
     static constexpr uint32_t DEBOUNCE_DELAY = 50; // 50ms debounce
     
-    // Autosteer loop timing
-    uint32_t lastLoopTime = 0;           // Timer for 100Hz autosteer loop
-    static constexpr uint32_t LOOP_TIME = 10; // 10ms = 100Hz
+    // Autosteer loop timing - Now handled by SimpleScheduler at 100Hz
     
     // Steer state management
     uint8_t steerState = 1;              // 0 = steering active, 1 = steering inactive
@@ -156,9 +125,6 @@ public:
     // Static callback wrapper for PGN registration
     static void handlePGNStatic(uint8_t pgn, const uint8_t* data, size_t len);
     
-    // Public getters for config/settings
-    const SteerConfig& getConfig() const { return steerConfig; }
-    const SteerSettings& getSettings() const { return steerSettings; }
     
     // Public getters for state
     bool isEnabled() const { return autosteerEnabled; }

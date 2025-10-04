@@ -83,6 +83,23 @@ Example CAN traffic for debugging:
 4. **Motor Detection**: Happens at boot - motor type changes require reboot
 5. **Web Changes**: Device settings saved to EEPROM require module reinitialization
 
+## PGN 251 Settings Implementation Status
+
+The following settings are extracted from PGN 251 (Steer Config):
+
+| Setting | Implemented | Notes |
+|---------|------------|-------|
+| InvertWAS | ✅ Yes | Inverts wheel angle sensor reading |
+| MotorDriveDirection | ✅ Yes | Inverts motor PWM output |
+| SteerSwitch | ✅ Yes | Physical switch for autosteer enable |
+| SteerButton | ✅ Yes | Physical button for autosteer toggle |
+| ShaftEncoder | ✅ Yes | Enables encoder feedback |
+| CytronDriver | ⚠️ Cosmetic | Only affects display text, no functional difference |
+| IsRelayActiveHigh | ❌ No | Not implemented - relays use standard active-low |
+| SingleInputWAS | ❌ N/A | Differential WAS not supported on this hardware |
+
+**Note**: All implemented settings take effect immediately when received via PGN, except motor type changes which force a reboot.
+
 ## Testing Tools
 
 - Serial menu: Press '?' at boot for interactive menu

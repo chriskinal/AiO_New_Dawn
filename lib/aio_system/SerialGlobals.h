@@ -9,7 +9,7 @@
 
 #include "Arduino.h"
 #include "HardwareSerial.h"
-#include <Streaming.h>
+//#include <Streaming.h>
 
 // Include necessary parser and statistics classes
 #include "UBXParser.h"

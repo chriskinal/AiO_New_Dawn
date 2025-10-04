@@ -434,3 +434,28 @@ void SimpleWebSocketServer::broadcastText(const String& text) {
         }
     }
 }
+
+void SimpleWebSocketServer::broadcast(const char* text, size_t length) {
+    String str;
+    str.reserve(length);
+    for (size_t i = 0; i < length; i++) {
+        str += text[i];
+    }
+
+    for (auto& client : clients) {
+        if (client && client->isConnected()) {
+            client->sendText(str);
+        }
+    }
+}
+
+void SimpleWebSocketServer::sendToClient(size_t index, const char* text, size_t length) {
+    if (index < clients.size() && clients[index] && clients[index]->isConnected()) {
+        String str;
+        str.reserve(length);
+        for (size_t i = 0; i < length; i++) {
+            str += text[i];
+        }
+        clients[index]->sendText(str);
+    }
+}

@@ -7,48 +7,37 @@
 #include "EEPROMLayout.h"
 #include "EventLogger.h"
 #include "PGNProcessor.h"
+#include "ConfigManager.h"
 
 using namespace qindesign::network;
 
-// Global network configuration
-NetworkConfig netConfig;
+// Global network configuration removed - now using ConfigManager
 
 // Static member definition
 volatile bool QNetworkBase::linkState = false;
 
 // Save network configuration
 void save_current_net() {
-    // Write magic marker to indicate valid network config
-    uint8_t marker = 0xAA;
-    EEPROM.put(NETWORK_CONFIG_ADDR - 1, marker);
+    // Save directly through ConfigManager
+    ConfigManager* config = ConfigManager::getInstance();
+    config->saveNetworkConfig();
     
-    // Save network configuration struct
-    EEPROM.put(NETWORK_CONFIG_ADDR, netConfig);
-    
+    uint8_t ip[4];
+    config->getIPAddress(ip);
     LOG_INFO(EventSource::CONFIG, "Network configuration saved - IP: %d.%d.%d.%d",
-             netConfig.ipAddress[0], netConfig.ipAddress[1], 
-             netConfig.ipAddress[2], netConfig.ipAddress[3]);
+             ip[0], ip[1], ip[2], ip[3]);
 }
 
 // Load network configuration from EEPROM
 bool load_network_config() {
-    // Check for valid config marker
-    uint8_t marker;
-    EEPROM.get(NETWORK_CONFIG_ADDR - 1, marker);
+    // Network config is now loaded automatically by ConfigManager
+    ConfigManager* config = ConfigManager::getInstance();
     
-    if (marker == 0xAA) {
-        // Valid config found, load it
-        EEPROM.get(NETWORK_CONFIG_ADDR, netConfig);
-        
-        LOG_INFO(EventSource::CONFIG, "Network configuration loaded - IP: %d.%d.%d.%d",
-                 netConfig.ipAddress[0], netConfig.ipAddress[1], 
-                 netConfig.ipAddress[2], netConfig.ipAddress[3]);
-        return true;
-    }
-    
-    // No valid config, use defaults
-    LOG_INFO(EventSource::CONFIG, "No saved network config, using defaults");
-    return false;
+    uint8_t ip[4];
+    config->getIPAddress(ip);
+    LOG_INFO(EventSource::CONFIG, "Network configuration loaded - IP: %d.%d.%d.%d",
+             ip[0], ip[1], ip[2], ip[3]);
+    return true;
 }
 
 // Initialize network stack
@@ -59,39 +48,42 @@ void QNetworkBase::init() {
     // Set MAC address (required for Teensy)
     uint8_t mac[6];
     Ethernet.macAddress(mac);  // Get the built-in MAC
-    Serial.printf("\r\n- MAC Address: %02X:%02X:%02X:%02X:%02X:%02X\r\n", 
-                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    LOG_INFO(EventSource::NETWORK, "MAC Address: %02X:%02X:%02X:%02X:%02X:%02X", 
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     
     // Load saved network config or use defaults
     load_network_config();
     
-    // Configure static IP from loaded or default config
-    IPAddress ip(netConfig.ipAddress[0], netConfig.ipAddress[1], 
-                 netConfig.ipAddress[2], netConfig.ipAddress[3]);
-    IPAddress subnet(netConfig.subnet[0], netConfig.subnet[1], 
-                    netConfig.subnet[2], netConfig.subnet[3]);
-    IPAddress gateway(netConfig.gateway[0], netConfig.gateway[1], 
-                     netConfig.gateway[2], netConfig.gateway[3]);
+    // Configure static IP from ConfigManager
+    ConfigManager* config = ConfigManager::getInstance();
+    uint8_t ipBytes[4], subnetBytes[4], gatewayBytes[4];
+    config->getIPAddress(ipBytes);
+    config->getSubnet(subnetBytes);
+    config->getGateway(gatewayBytes);
+    
+    IPAddress ip(ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3]);
+    IPAddress subnet(subnetBytes[0], subnetBytes[1], subnetBytes[2], subnetBytes[3]);
+    IPAddress gateway(gatewayBytes[0], gatewayBytes[1], gatewayBytes[2], gatewayBytes[3]);
     
     // Start Ethernet with static IP
     if (!Ethernet.begin(ip, subnet, gateway)) {
-        Serial.print("\r\n- ERROR: Failed to start Ethernet!\r\n");
+        LOG_ERROR(EventSource::NETWORK, "Failed to start Ethernet!");
         return;
     }
     
     // Wait for link
-    Serial.print("\r\n- Waiting for Ethernet link...");
+    LOG_INFO(EventSource::NETWORK, "Waiting for Ethernet link...");
     if (!Ethernet.waitForLink(5000)) {  // 5 second timeout
-        Serial.print("\r\n- WARNING: Link timeout, continuing anyway\r\n");
+        LOG_WARNING(EventSource::NETWORK, "Link timeout, continuing anyway");
     }
     
     if (Ethernet.linkStatus()) {
-        Serial.print("\r\n- Link UP!");
-        Serial.printf("\r\n- IP Address: %d.%d.%d.%d\r\n", ip[0], ip[1], ip[2], ip[3]);
-        Serial.printf("\r\n- Link Speed: %d Mbps\r\n", Ethernet.linkSpeed());
-        Serial.printf("\r\n- Link Full Duplex: %s\r\n", Ethernet.linkIsFullDuplex() ? "Yes" : "No");
+        LOG_INFO(EventSource::NETWORK, "Link UP! IP: %d.%d.%d.%d, Speed: %d Mbps, Full Duplex: %s", 
+                 ip[0], ip[1], ip[2], ip[3], 
+                 Ethernet.linkSpeed(),
+                 Ethernet.linkIsFullDuplex() ? "Yes" : "No");
     } else {
-        Serial.print("\r\n- ERROR: No Ethernet link detected!\r\n");
+        LOG_ERROR(EventSource::NETWORK, "No Ethernet link detected!");
     }
     
     // Register PGN 201 handler for subnet changes
@@ -135,52 +127,40 @@ void QNetworkBase::handlePGN201(uint8_t pgn, const uint8_t* data, size_t len) {
     // Extract new subnet
     uint8_t newSubnet[3] = { data[2], data[3], data[4] };
     
+    // Get current IP from ConfigManager
+    ConfigManager* config = ConfigManager::getInstance();
+    uint8_t currentIP[4];
+    config->getIPAddress(currentIP);
+    
     // Check if subnet actually changed
-    if (netConfig.currentIP[0] == newSubnet[0] && 
-        netConfig.currentIP[1] == newSubnet[1] && 
-        netConfig.currentIP[2] == newSubnet[2]) {
+    if (currentIP[0] == newSubnet[0] && 
+        currentIP[1] == newSubnet[1] && 
+        currentIP[2] == newSubnet[2]) {
         LOG_INFO(EventSource::NETWORK, "Subnet unchanged (%d.%d.%d.x), ignoring PGN 201",
                  newSubnet[0], newSubnet[1], newSubnet[2]);
         return;
     }
     
     LOG_INFO(EventSource::NETWORK, "IP change requested via PGN 201: %d.%d.%d.%d -> %d.%d.%d.%d", 
-             netConfig.currentIP[0], netConfig.currentIP[1], 
-             netConfig.currentIP[2], netConfig.currentIP[3],
-             newSubnet[0], newSubnet[1], newSubnet[2], netConfig.currentIP[3]);
+             currentIP[0], currentIP[1], currentIP[2], currentIP[3],
+             newSubnet[0], newSubnet[1], newSubnet[2], currentIP[3]);
     
-    // Update subnet (keep last octet)
-    netConfig.currentIP[0] = newSubnet[0];
-    netConfig.currentIP[1] = newSubnet[1];
-    netConfig.currentIP[2] = newSubnet[2];
-    
-    // Update ipAddress array too
-    netConfig.ipAddress[0] = newSubnet[0];
-    netConfig.ipAddress[1] = newSubnet[1];
-    netConfig.ipAddress[2] = newSubnet[2];
+    // Update IP address (keep last octet)
+    uint8_t newIP[4] = {newSubnet[0], newSubnet[1], newSubnet[2], currentIP[3]};
+    config->setIPAddress(newIP);
     
     // Update gateway to .1
-    netConfig.gateway[0] = newSubnet[0];
-    netConfig.gateway[1] = newSubnet[1];
-    netConfig.gateway[2] = newSubnet[2];
-    netConfig.gateway[3] = 1;
+    uint8_t newGateway[4] = {newSubnet[0], newSubnet[1], newSubnet[2], 1};
+    config->setGateway(newGateway);
     
-    // Update broadcast to .255
-    netConfig.broadcastIP[0] = newSubnet[0];
-    netConfig.broadcastIP[1] = newSubnet[1];
-    netConfig.broadcastIP[2] = newSubnet[2];
-    netConfig.broadcastIP[3] = 255;
-    
-    // Update destIP too
-    netConfig.destIP[0] = newSubnet[0];
-    netConfig.destIP[1] = newSubnet[1];
-    netConfig.destIP[2] = newSubnet[2];
-    netConfig.destIP[3] = 255;
+    // Update destination IP to .255
+    uint8_t newDest[4] = {newSubnet[0], newSubnet[1], newSubnet[2], 255};
+    config->setDestIP(newDest);
     
     LOG_WARNING(EventSource::NETWORK, "Saving network config to EEPROM and rebooting...");
     
     // Save to EEPROM
-    save_current_net();
+    config->saveNetworkConfig();
     delay(20);
     SCB_AIRCR = 0x05FA0004; // Teensy Reset
 }

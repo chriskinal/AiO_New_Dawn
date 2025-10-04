@@ -212,7 +212,7 @@ void LEDManagerFSM::transitionIMUState(IMUState newState) {
 
 // FSM LED update functions
 void LEDManagerFSM::updatePowerLED() {
-    for (int i = 0; i < sizeof(powerStateMap)/sizeof(powerStateMap[0]); i++) {
+    for (uint8_t i = 0; i < sizeof(powerStateMap)/sizeof(powerStateMap[0]); i++) {
         if (powerStateMap[i].state == powerState) {
             setLED(PWR_ETH, powerStateMap[i].color, powerStateMap[i].mode);
             break;
@@ -221,7 +221,7 @@ void LEDManagerFSM::updatePowerLED() {
 }
 
 void LEDManagerFSM::updateGPSLED() {
-    for (int i = 0; i < sizeof(gpsStateMap)/sizeof(gpsStateMap[0]); i++) {
+    for (uint8_t i = 0; i < sizeof(gpsStateMap)/sizeof(gpsStateMap[0]); i++) {
         if (gpsStateMap[i].state == gpsState) {
             setLED(GPS, gpsStateMap[i].color, gpsStateMap[i].mode);
             break;
@@ -230,7 +230,7 @@ void LEDManagerFSM::updateGPSLED() {
 }
 
 void LEDManagerFSM::updateSteerLED() {
-    for (int i = 0; i < sizeof(steerStateMap)/sizeof(steerStateMap[0]); i++) {
+    for (uint8_t i = 0; i < sizeof(steerStateMap)/sizeof(steerStateMap[0]); i++) {
         if (steerStateMap[i].state == steerState) {
             setLED(STEER, steerStateMap[i].color, steerStateMap[i].mode);
             break;
@@ -239,7 +239,7 @@ void LEDManagerFSM::updateSteerLED() {
 }
 
 void LEDManagerFSM::updateIMULED() {
-    for (int i = 0; i < sizeof(imuStateMap)/sizeof(imuStateMap[0]); i++) {
+    for (uint8_t i = 0; i < sizeof(imuStateMap)/sizeof(imuStateMap[0]); i++) {
         if (imuStateMap[i].state == imuState) {
             setLED(INS, imuStateMap[i].color, imuStateMap[i].mode);
             break;

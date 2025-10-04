@@ -46,18 +46,9 @@ private:
         uint8_t lastHydLift;         // Previous hydraulic state
     } machineState;
     
-    // Machine configuration from PGN 238
-    struct MachineConfig {
-        uint8_t raiseTime;           // Hydraulic raise time (seconds)
-        uint8_t lowerTime;           // Hydraulic lower time (seconds)
-        uint8_t hydEnable;           // Hydraulic functions enabled
-        uint8_t isPinActiveHigh;     // 0=active low (default), 1=active high
-        uint8_t user1;               // User defined values
-        uint8_t user2;
-        uint8_t user3;
-        uint8_t user4;
-        bool configReceived;         // Track if config has been received
-    } machineConfig;
+    // Machine configuration from PGN 238 is stored directly in ConfigManager
+    // configReceived tracks if we've received config from AgOpenGPS
+    bool configReceived = false;
     
     // Pin configuration from PGN 236
     struct PinConfig {
@@ -98,6 +89,9 @@ public:
     void setPinLow(uint8_t pin);
     void setPinPWM(uint8_t pin, uint16_t pwmValue);  // For Danfoss valve control
     bool checkPCA9685();
+
+    // Section control sleep mode detection
+    bool isOnboardSectionControlActive() const;  // Returns true if onboard SC should respond
 };
 
 extern MachineProcessor machineProcessor;

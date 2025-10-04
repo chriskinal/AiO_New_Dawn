@@ -85,7 +85,11 @@ public:
     // Broadcast to all connected clients
     void broadcastBinary(const uint8_t* data, size_t length);
     void broadcastText(const String& text);
-    
+    void broadcast(const char* text, size_t length);
+
+    // Send to specific client
+    void sendToClient(size_t index, const char* text, size_t length);
+
     // Set max clients (default 4)
     void setMaxClients(size_t max) { maxClients = max; }
     

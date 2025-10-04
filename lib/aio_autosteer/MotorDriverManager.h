@@ -5,7 +5,8 @@
 #include <Arduino.h>
 #include "MotorDriverInterface.h"
 #include "PWMMotorDriver.h"
-#include "KeyaCANDriver.h"
+#include "TractorCANDriver.h"
+// #include "KeyaCANDriver.h"  // Now handled by TractorCANDriver
 #include "KeyaSerialDriver.h"
 #include "DanfossMotorDriver.h"
 #include "HardwareManager.h"

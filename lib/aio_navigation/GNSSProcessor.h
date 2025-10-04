@@ -7,6 +7,7 @@
 #include "Arduino.h"
 #include <stdint.h>
 #include "PGNProcessor.h"
+#include "EventLogger.h"
 
 // PGN Constants for GPS module
 constexpr uint8_t GPS_SOURCE_ID = 0x78;     // 120 decimal - GPS source address (from PGN.md GPS Reply)
@@ -27,6 +28,13 @@ public:
         double longitude; // decimal degrees
         float altitude;   // meters
         uint32_t fixTime; // HHMMSS as integer
+        float fixTimeFractional; // Fractional seconds (0.0-0.999)
+        
+        // NMEA format cached coordinates (to avoid repeated conversions)
+        double latitudeNMEA;  // DDMM.MMMM format
+        double longitudeNMEA; // DDDMM.MMMM format
+        char latDir;          // 'N' or 'S'
+        char lonDir;          // 'E' or 'W'
         
         // GPS time data (for UTC conversion)
         uint16_t gpsWeek;    // GPS week number
@@ -65,6 +73,8 @@ public:
         float velStdDevNorth;   // Velocity std dev north (m/s)
         float velStdDevEast;    // Velocity std dev east (m/s)
         float velStdDevUp;      // Velocity std dev up (m/s)
+        uint16_t extSolStatus;  // Extended solution status
+        uint32_t timeSinceUpdate; // Time since last ZUPT or position update (seconds)
 
         // Status flags
         uint32_t lastUpdateTime;
@@ -83,7 +93,10 @@ public:
     };
 
     // UDP passthrough control
-    void setUDPPassthrough(bool enabled) { udpPassthroughEnabled = enabled; }
+    void setUDPPassthrough(bool enabled) { 
+        udpPassthroughEnabled = enabled; 
+        LOG_DEBUG(EventSource::GNSS, "UDP Passthrough %s", enabled ? "ENABLED" : "DISABLED");
+    }
     bool isUDPPassthroughEnabled() const { return udpPassthroughEnabled; }
 
 private:
@@ -105,15 +118,39 @@ private:
     uint8_t checksumIndex;
     bool isUnicoreMessage;        // Track if current message starts with #
 
-    // Field parsing
-    char fields[35][24]; // Max 35 fields, 24 chars each (increased for INSPVAXA)
+    // Message type enum for fast detection
+    enum MessageType {
+        MSG_UNKNOWN = 0,
+        MSG_GGA,
+        MSG_GNS,
+        MSG_VTG,
+        MSG_RMC,
+        MSG_HPR,
+        MSG_KSXT,
+        MSG_INSPVAA,
+        MSG_INSPVAXA,
+        MSG_BESTGNSSPOS,
+        MSG_AVR
+    };
+
+    // Field parsing - zero-copy approach
+    struct FieldRef {
+        const char* start;
+        uint8_t length;
+    };
+    FieldRef fieldRefs[35];  // References to fields in parseBuffer
     uint8_t fieldCount;
+    
 
     // Data storage
     GNSSData gpsData;
 
     // Configuration
     bool enableNoiseFilter;
+    
+    // GGA duplicate detection
+    double lastGGALatitude;
+    double lastGGALongitude;
     bool enableDebug;
     
     // UBX parser for GPS2 RELPOSNED
@@ -121,24 +158,27 @@ private:
     
     // UDP passthrough
     bool udpPassthroughEnabled;
+    
+    // Processing control
+    bool processingPaused;
 
     // Internal parsing methods
     void resetParser();
     bool validateChecksum();
-    void parseFields();
+    void parseFieldsZeroCopy();  // New zero-copy field parser
     bool processMessage();
 
     // Message handlers
-    bool parseGGA();
-    bool parseGNS();
-    bool parseVTG();
-    bool parseHPR();
+    bool parseGGAZeroCopy();
+    bool parseGNSZeroCopy();
+    bool parseVTGZeroCopy();
+    bool parseHPRZeroCopy();
     bool parseKSXT();
     bool parseINSPVAA();
     bool parseINSPVAXA();
     
     // UDP passthrough
-    void sendNMEAViaUDP();
+    void sendCompleteNMEA();
 
     // Field parsing utilities
     double parseLatitude(const char *lat, const char *ns);
@@ -149,6 +189,23 @@ private:
     uint8_t hexToInt(char c);
     bool isHex(char c);
     void logDebug(const char *msg);
+    
+    // Fast message type detection
+    MessageType detectMessageType(const char* msgType);
+    
+    // Convert decimal degrees to NMEA format and cache
+    void cacheNMEACoordinates(double lat, double lon);
+    
+    // Zero-copy string utilities
+    float parseFloatZeroCopy(const FieldRef& field);
+    double parseDoubleZeroCopy(const FieldRef& field);
+    int parseIntZeroCopy(const FieldRef& field);
+    bool fieldEquals(const FieldRef& field, const char* str);
+    bool fieldStartsWith(const FieldRef& field, const char* prefix);
+    
+    // Zero-copy coordinate parsers
+    double parseLatitudeZeroCopy(const FieldRef& lat, const FieldRef& ns);
+    double parseLongitudeZeroCopy(const FieldRef& lon, const FieldRef& ew);
 
 public:
     GNSSProcessor();
@@ -193,6 +250,11 @@ public:
     
     // Static callback for PGN Hello (200)
     static void handleBroadcastPGN(uint8_t pgn, const uint8_t* data, size_t len);
+    
+    // Processing control - for UM98x configuration
+    void pauseProcessing() { processingPaused = true; }
+    void resumeProcessing() { processingPaused = false; }
+    bool isProcessingPaused() const { return processingPaused; }
 };
 
 // Global instance following established pattern

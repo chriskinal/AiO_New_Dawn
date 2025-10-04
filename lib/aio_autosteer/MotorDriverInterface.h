@@ -13,7 +13,8 @@ enum class MotorDriverType {
     KEYA_CAN,          // CAN-based Keya motor
     KEYA_SERIAL,       // Serial-based Keya motor
     DANFOSS,           // Danfoss valve driver
-    GENERIC_PWM        // Generic PWM driver
+    GENERIC_PWM,       // Generic PWM driver
+    TRACTOR_CAN        // Unified tractor CAN driver (Keya/Fendt/Valtra/etc)
 };
 
 // Kickout types supported

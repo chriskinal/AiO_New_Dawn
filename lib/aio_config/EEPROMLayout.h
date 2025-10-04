@@ -2,7 +2,7 @@
 #define EEPROM_LAYOUT_H
 
 // EEPROM Version - increment this when EEPROM layout changes
-#define EEPROM_VERSION 108
+#define EEPROM_VERSION 111  // Added JD PWM encoder configuration
 
 // EEPROM Address Map
 #define EE_VERSION_ADDR      1      // Version number (2 bytes)
@@ -17,5 +17,6 @@
 #define WEB_CONFIG_ADDR      900    // Web interface configuration (900-999)
 #define TURN_SENSOR_CONFIG_ADDR 1000 // Turn sensor configuration (1000-1099)
 #define ANALOG_WORK_SWITCH_ADDR 1100 // Analog work switch configuration (1100-1199)
+#define MISC_CONFIG_ADDR        1200 // Miscellaneous settings (1200-1299)
 
 #endif // EEPROM_LAYOUT_H

@@ -4,7 +4,6 @@
 #include "Arduino.h"
 #include "GNSSProcessor.h"
 #include "IMUProcessor.h"
-#include "elapsedMillis.h"
 #include "QNetworkBase.h"
 
 enum class NavMessageType {
@@ -22,12 +21,18 @@ private:
     static constexpr size_t BUFFER_SIZE = 256;
     char messageBuffer[BUFFER_SIZE];
     
-    // Timing control
-    elapsedMillis timeSinceLastMessage;
-    static constexpr uint32_t MESSAGE_INTERVAL_MS = 100; // 10Hz
+    // Timing control - Now handled by SimpleScheduler at 10Hz
+    static constexpr uint32_t MESSAGE_INTERVAL_MS = 100;  // Default 10Hz (kept for compatibility)
     
     // Track when we last sent GPS data to AgIO
     uint32_t lastGPSMessageTime;
+    
+    // Track last GPS update time to detect duplicates
+    uint32_t lastGPSUpdateTime;
+    
+    // Track last sent PAOGI position for duplicate detection
+    double lastPAOGILatitude;
+    double lastPAOGILongitude;
     
     // Private constructor for singleton
     NAVProcessor();
@@ -53,6 +58,9 @@ public:
     
     // Main processing method
     void process();
+    
+    // Check if we have new GPS data since last send
+    bool hasNewGPSData() const;
     
     // Configuration
     void setMessageRate(uint32_t intervalMs);

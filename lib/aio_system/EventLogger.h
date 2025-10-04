@@ -5,6 +5,9 @@
 #include <vector>
 #include <cstdarg>
 
+// Forward declaration to avoid circular dependency
+class LogWebSocket;
+
 // Event severity levels (following syslog standards)
 enum class EventSeverity : uint8_t {
     EMERGENCY = 0,  // System is unusable
@@ -39,6 +42,14 @@ struct EventConfig {
     uint8_t syslogPort[2] = {2, 2};  // Port 514 (0x0202)
     bool disableRateLimit = false;  // Flag to disable rate limiting
     uint8_t reserved[9];  // Future expansion
+};
+
+// Log entry for circular buffer (web viewer)
+struct LogEntry {
+    uint32_t timestamp;       // millis() when logged
+    EventSeverity severity;
+    EventSource source;
+    char message[128];        // Truncated message for buffer
 };
 
 class EventLogger {
@@ -106,6 +117,18 @@ private:
     uint32_t networkReadyTime = 0;
     uint32_t lastNetworkDownTime = 0;
 
+    // Circular buffer for web viewer
+    static constexpr size_t LOG_BUFFER_SIZE = 100;
+    LogEntry logBuffer[LOG_BUFFER_SIZE];
+    size_t logBufferHead = 0;  // Next position to write
+    size_t logBufferCount = 0; // Number of entries in buffer
+
+    // Add entry to circular buffer
+    void addToBuffer(EventSeverity severity, EventSource source, const char* message);
+
+    // WebSocket for real-time log streaming
+    LogWebSocket* logWebSocket;
+
 public:
     ~EventLogger();
     
@@ -149,12 +172,12 @@ public:
     // Rate limiting control
     void setRateLimitEnabled(bool enabled);
     bool isRateLimitEnabled() const { return !config.disableRateLimit; }
-    
+
     // Get the effective log level for UDP syslog
     EventSeverity getEffectiveLogLevel() {
         return static_cast<EventSeverity>(config.udpLevel);
     }
-    
+
     // Get human-readable name for a log level
     const char* getLevelName(EventSeverity level) {
         switch(level) {
@@ -169,6 +192,16 @@ public:
             default: return "UNKNOWN";
         }
     }
+
+    // Web viewer access to log buffer
+    size_t getLogBufferCount() const { return logBufferCount; }
+    const LogEntry* getLogBuffer() const { return logBuffer; }
+    size_t getLogBufferHead() const { return logBufferHead; }
+    size_t getLogBufferSize() const { return LOG_BUFFER_SIZE; }
+
+    // WebSocket management
+    void setLogWebSocket(LogWebSocket* ws) { logWebSocket = ws; }
+    LogWebSocket* getLogWebSocket() const { return logWebSocket; }
 };
 
 // Convenience macros for common logging patterns

@@ -10,13 +10,6 @@
 #define SerialRS232 Serial7
 #define SerialESP32 Serial2
 
-// Baud rates (self-contained constants)
-const int32_t baudGPS = 460800;
-const int32_t baudRadio = 115200;
-const int32_t baudRS232 = 115200;
-const int32_t baudESP32 = 460800;
-const int32_t baudIMU = 115200;
-
 // GPS and IMU type enumerations removed - all detection moved to NAVProcessor
 
 class SerialManager

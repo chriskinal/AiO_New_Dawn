@@ -161,6 +161,7 @@ public:
     // Hardware control methods
     void enableBuzzer();
     void disableBuzzer();
+    void performBuzzerTest();  // Play a test tone with current volume setting
     void enableSteerMotor();
     void disableSteerMotor();
 
