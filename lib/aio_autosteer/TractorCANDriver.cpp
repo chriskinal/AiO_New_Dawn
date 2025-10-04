@@ -24,39 +24,42 @@ void TractorCANDriver::assignCANBuses() {
 
     // For Keya function, find which bus has it
     if (hasKeyaFunction()) {
-        if (config.can1Function == static_cast<uint8_t>(CANFunction::KEYA)) {
+        if (config.can1Function & static_cast<uint8_t>(CANFunction::KEYA)) {
             steerBusNum = 1;
             steerCAN = getBusPointer(1);
-        } else if (config.can2Function == static_cast<uint8_t>(CANFunction::KEYA)) {
+        } else if (config.can2Function & static_cast<uint8_t>(CANFunction::KEYA)) {
             steerBusNum = 2;
             steerCAN = getBusPointer(2);
-        } else if (config.can3Function == static_cast<uint8_t>(CANFunction::KEYA)) {
+        } else if (config.can3Function & static_cast<uint8_t>(CANFunction::KEYA)) {
             steerBusNum = 3;
             steerCAN = getBusPointer(3);
         }
     }
-    // For other brands, find V_Bus for steering
+    // For other brands, find bus with steering function
     else if (config.brand != static_cast<uint8_t>(TractorBrand::DISABLED)) {
-        // Check which bus has V_Bus function
-        if (config.can1Function == static_cast<uint8_t>(CANFunction::V_BUS)) {
+        // Check which bus has steering function
+        if (config.can1Function & static_cast<uint8_t>(CANFunction::STEERING)) {
             steerBusNum = 1;
             steerCAN = getBusPointer(1);
-        } else if (config.can2Function == static_cast<uint8_t>(CANFunction::V_BUS)) {
+        } else if (config.can2Function & static_cast<uint8_t>(CANFunction::STEERING)) {
             steerBusNum = 2;
             steerCAN = getBusPointer(2);
-        } else if (config.can3Function == static_cast<uint8_t>(CANFunction::V_BUS)) {
+        } else if (config.can3Function & static_cast<uint8_t>(CANFunction::STEERING)) {
             steerBusNum = 3;
             steerCAN = getBusPointer(3);
         }
 
-        // Check for K_Bus (buttons/hitch)
-        if (config.can1Function == static_cast<uint8_t>(CANFunction::K_BUS)) {
+        // Check for buttons/hitch functions
+        if (config.can1Function & (static_cast<uint8_t>(CANFunction::BUTTONS) |
+                                   static_cast<uint8_t>(CANFunction::HITCH))) {
             buttonBusNum = 1;
             buttonCAN = getBusPointer(1);
-        } else if (config.can2Function == static_cast<uint8_t>(CANFunction::K_BUS)) {
+        } else if (config.can2Function & (static_cast<uint8_t>(CANFunction::BUTTONS) |
+                                          static_cast<uint8_t>(CANFunction::HITCH))) {
             buttonBusNum = 2;
             buttonCAN = getBusPointer(2);
-        } else if (config.can3Function == static_cast<uint8_t>(CANFunction::K_BUS)) {
+        } else if (config.can3Function & (static_cast<uint8_t>(CANFunction::BUTTONS) |
+                                          static_cast<uint8_t>(CANFunction::HITCH))) {
             buttonBusNum = 3;
             buttonCAN = getBusPointer(3);
         }
@@ -1001,7 +1004,7 @@ void TractorCANDriver::setConfig(const CANSteerConfig& newConfig) {
 }
 
 bool TractorCANDriver::hasKeyaFunction() const {
-    return (config.can1Function == static_cast<uint8_t>(CANFunction::KEYA) ||
-            config.can2Function == static_cast<uint8_t>(CANFunction::KEYA) ||
-            config.can3Function == static_cast<uint8_t>(CANFunction::KEYA));
+    return ((config.can1Function & static_cast<uint8_t>(CANFunction::KEYA)) ||
+            (config.can2Function & static_cast<uint8_t>(CANFunction::KEYA)) ||
+            (config.can3Function & static_cast<uint8_t>(CANFunction::KEYA)));
 }

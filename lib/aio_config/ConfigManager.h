@@ -5,20 +5,22 @@
 #include <EEPROM.h>
 #include "EEPROMLayout.h"
 
-// CAN bus functions
+// CAN bus functions (bitfield - multiple can be selected)
 enum class CANFunction : uint8_t {
-    NONE = 0,
-    KEYA = 1,
-    V_BUS = 2,
-    ISO_BUS = 3,
-    K_BUS = 4
+    NONE      = 0x00,  // No function
+    STEERING  = 0x01,  // Steering control (valve/motor)
+    BUTTONS   = 0x02,  // Button inputs (engage/disengage)
+    HITCH     = 0x04,  // 3-point hitch control
+    IMPLEMENT = 0x08,  // ISO implement control
+    KEYA      = 0x10   // Keya motor (special case)
 };
 
 enum class CANBusName : uint8_t {
     NONE = 0,
-    V_BUS = 1,
-    K_BUS = 2,
-    ISO_BUS = 3
+    KEYA = 1,
+    V_BUS = 2,
+    K_BUS = 3,
+    ISO_BUS = 4
 };
 
 // CAN Steer configuration structure

@@ -435,13 +435,14 @@ const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
             }
         };
 
-        // Function value mapping
+        // Function value mapping (bitfield values)
         const functionValues = {
-            'NONE': 0,
-            'KEYA': 1,
-            'V_BUS': 2,
-            'ISO_BUS': 3,
-            'K_BUS': 4
+            'NONE': 0x00,
+            'STEERING': 0x01,
+            'BUTTONS': 0x02,
+            'HITCH': 0x04,
+            'IMPLEMENT': 0x08,
+            'KEYA': 0x10
         };
 
         // Function labels
@@ -510,48 +511,34 @@ const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
             updateInfoText(brand);
         }
 
-        // Update hidden select based on checkboxes
+        // Update hidden select based on checkboxes (supports multiple selections via bitfield)
         function updateHiddenSelect(busNum) {
             const hiddenSelect = document.getElementById(`can${busNum}Function`);
             const checkboxes = document.querySelectorAll(`#can${busNum}Functions input[type="checkbox"]`);
             const busNameSelect = document.getElementById(`can${busNum}Name`);
             const busNameValue = parseInt(busNameSelect.value);
 
-            let selectedFunction = 0; // Default to NONE
+            let selectedFunctions = 0x00; // Start with NONE
 
             checkboxes.forEach(cb => {
                 if (cb.checked) {
                     const funcKey = cb.dataset.function;
 
                     if (funcKey === 'steering') {
-                        // Determine steering type based on bus name
-                        if (busNameValue === 1) { // V_Bus
-                            selectedFunction = functionValues['V_BUS'];
-                        } else if (busNameValue === 3) { // ISO_Bus
-                            selectedFunction = functionValues['ISO_BUS'];
-                        } else if (busNameValue === 0) { // None
-                            // For None, steering shouldn't be selected, but if it is, default to 0
-                            selectedFunction = 0;
-                        }
+                        selectedFunctions |= functionValues['STEERING'];
+                    } else if (funcKey === 'buttons') {
+                        selectedFunctions |= functionValues['BUTTONS'];
+                    } else if (funcKey === 'hitch') {
+                        selectedFunctions |= functionValues['HITCH'];
+                    } else if (funcKey === 'implement') {
+                        selectedFunctions |= functionValues['IMPLEMENT'];
                     } else if (funcKey === 'keya') {
-                        selectedFunction = functionValues['KEYA'];
-                    } else {
-                        // Map function to bus name selected
-                        if (busNameValue === 1) { // V_Bus
-                            selectedFunction = functionValues['V_BUS'];
-                        } else if (busNameValue === 2) { // K_Bus
-                            selectedFunction = functionValues['K_BUS'];
-                        } else if (busNameValue === 3) { // ISO_Bus
-                            selectedFunction = functionValues['ISO_BUS'];
-                        } else if (busNameValue === 0) { // None
-                            // For non-steering functions with None, default to 0
-                            selectedFunction = 0;
-                        }
+                        selectedFunctions |= functionValues['KEYA'];
                     }
                 }
             });
 
-            hiddenSelect.value = selectedFunction;
+            hiddenSelect.value = selectedFunctions;
         }
 
         // Update info text to show relevant functions only
@@ -611,50 +598,52 @@ const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
             infoDiv.innerHTML = infoHtml;
         }
 
-        // Load saved config into checkboxes
+        // Load saved config into checkboxes (handles bitfield values)
         function loadConfigIntoUI() {
             // Use setTimeout to ensure DOM is fully ready
             setTimeout(() => {
                 [1, 2, 3].forEach(busNum => {
                     const hiddenSelect = document.getElementById(`can${busNum}Function`);
-                    const busNameSelect = document.getElementById(`can${busNum}Name`);
                     const savedValue = parseInt(hiddenSelect.value);
-                    const busNameValue = parseInt(busNameSelect.value);
 
-                    console.log(`CAN${busNum}: savedValue=${savedValue}, busName=${busNameValue}`);
+                    console.log(`CAN${busNum}: savedValue=0x${savedValue.toString(16)}`);
 
-                    if (savedValue !== 0) {
-                        // Check for steering types
-                        if (savedValue === functionValues['KEYA']) {
+                    if (savedValue !== 0x00) {
+                        // Check each bit and set corresponding checkboxes
+                        if (savedValue & functionValues['STEERING']) {
+                            const steeringCb = document.getElementById(`can${busNum}_steering`);
+                            if (steeringCb) {
+                                steeringCb.checked = true;
+                                console.log(`Checked steering for CAN${busNum}`);
+                            }
+                        }
+                        if (savedValue & functionValues['BUTTONS']) {
+                            const buttonsCb = document.getElementById(`can${busNum}_buttons`);
+                            if (buttonsCb) {
+                                buttonsCb.checked = true;
+                                console.log(`Checked buttons for CAN${busNum}`);
+                            }
+                        }
+                        if (savedValue & functionValues['HITCH']) {
+                            const hitchCb = document.getElementById(`can${busNum}_hitch`);
+                            if (hitchCb) {
+                                hitchCb.checked = true;
+                                console.log(`Checked hitch for CAN${busNum}`);
+                            }
+                        }
+                        if (savedValue & functionValues['IMPLEMENT']) {
+                            const implementCb = document.getElementById(`can${busNum}_implement`);
+                            if (implementCb) {
+                                implementCb.checked = true;
+                                console.log(`Checked implement for CAN${busNum}`);
+                            }
+                        }
+                        if (savedValue & functionValues['KEYA']) {
                             const keyaCb = document.getElementById(`can${busNum}_keya`);
                             if (keyaCb) {
                                 keyaCb.checked = true;
                                 console.log(`Checked keya for CAN${busNum}`);
                             }
-                        } else if (savedValue === functionValues['V_BUS'] ||
-                                   savedValue === functionValues['ISO_BUS']) {
-                            const steeringCb = document.getElementById(`can${busNum}_steering`);
-                            if (steeringCb) {
-                                steeringCb.checked = true;
-                                console.log(`Checked steering for CAN${busNum}`);
-                            } else {
-                                console.log(`Steering checkbox not found for CAN${busNum}`);
-                            }
-                        }
-                        // Check for K_BUS functions
-                        else if (savedValue === functionValues['K_BUS']) {
-                            // For K_BUS, check if buttons or hitch checkboxes exist
-                            console.log(`Processing K_BUS for CAN${busNum}`);
-                            ['buttons', 'hitch'].forEach(func => {
-                                const cb = document.getElementById(`can${busNum}_${func}`);
-                                console.log(`Looking for checkbox: can${busNum}_${func}, found: ${cb ? 'yes' : 'no'}`);
-                                if (cb) {
-                                    cb.checked = true;
-                                    console.log(`Checked ${func} for CAN${busNum}`);
-                                } else {
-                                    console.log(`WARNING: Checkbox can${busNum}_${func} not found!`);
-                                }
-                            });
                         }
                     }
                 });
