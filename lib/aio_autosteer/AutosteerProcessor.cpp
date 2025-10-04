@@ -171,6 +171,7 @@ float AutosteerProcessor::rowSenseProcess(float targetAngle) {
     int left = 317;    // Left limit (adjust as needed), ~0.8V
     int right = 1238;  // Right limit (adjust as needed), ~3.6V
     int deadband = 20; // Deadband around center value (adjust as needed), 34 = ~0.1V
+    float maxSteerAngle = 5.0f; // Maximum steer angle for row sense (degrees)
 
     uint32_t now = millis();
 
@@ -191,13 +192,13 @@ float AutosteerProcessor::rowSenseProcess(float targetAngle) {
 
     // Above deadband, set positive angle
     if (centeredSignal > deadband) {
-        newTargetAngle = (centeredSignal - deadband) / ((right - center - deadband) / 5.0f); // scale to 5 degrees
+        newTargetAngle = (centeredSignal - deadband) / ((right - center - deadband) / maxSteerAngle); // scale to 5 degrees
         Serial.printf("  DB %d", center + deadband);
     }
 
     // Below deadband, set negative angle
     else if (centeredSignal < -deadband) {
-        newTargetAngle = (centeredSignal + deadband) / ((center - left - deadband) / 5.0f); // scale to -5 degrees
+        newTargetAngle = (centeredSignal + deadband) / ((center - left - deadband) / maxSteerAngle); // scale to -5 degrees
         Serial.printf("  DB %d", center - deadband);
     }
 

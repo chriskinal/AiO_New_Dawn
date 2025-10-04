@@ -569,6 +569,10 @@ void loop()
   scheduler.run();
 
 
+  if (SerialRadio.available()) {
+    SerialGPS1.write(SerialRadio.read());
+  }
+  
   // Loop timing - ultra lightweight, just increment counter
   if (loopTimingEnabled) {
     loopCount++;
