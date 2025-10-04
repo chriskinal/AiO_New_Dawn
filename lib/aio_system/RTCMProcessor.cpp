@@ -78,7 +78,7 @@ void RTCMProcessor::processRadioRTCM()
     static uint32_t lastRadioLog = 0;
     static uint32_t lastDataTime = 0;
     static bool radioDataActive = false;
-
+    Serial.print("Process radio)");
     // Simple direct forwarding - exactly like the working test code
     if (SerialRadio.available())
     {
