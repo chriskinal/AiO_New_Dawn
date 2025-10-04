@@ -172,6 +172,8 @@ float AutosteerProcessor::rowSenseProcess(float targetAngle) {
     int right = 1238;  // Right limit (adjust as needed), ~3.6V
     int deadband = 20; // Deadband around center value (adjust as needed), 34 = ~0.1V
     float maxSteerAngle = 5.0f; // Maximum steer angle for row sense (degrees)
+    float offsetFactor = 0.1f; // Factor to adjust nudge effect (adjust as needed)
+    int maxOffset = 1000; // Maximum WAS offset adjustment (in counts)
 
     uint32_t now = millis();
 
@@ -183,7 +185,7 @@ float AutosteerProcessor::rowSenseProcess(float targetAngle) {
     static float aveSignal = 0.0f;
     aveSignal = aveSignal * 0.5f + rawSignal * 0.5f; // Simple moving average
 
-    if ((int)aveSignal < left || (int)aveSignal > right) return targetAngle;  // Ignore out of range values and return current target angle
+    if ((int)aveSignal < left - 10 || (int)aveSignal > right + 10) return targetAngle;  // Ignore out of range values and return current target angle
 
     int centeredSignal = (int)aveSignal - center;
     Serial.printf("\r\nRow Sense: Raw %4d  Ave %4d  Cen %3d", rawSignal, (int)aveSignal, centeredSignal);
@@ -193,13 +195,29 @@ float AutosteerProcessor::rowSenseProcess(float targetAngle) {
     // Above deadband, set positive angle
     if (centeredSignal > deadband) {
         newTargetAngle = (centeredSignal - deadband) / ((right - center - deadband) / maxSteerAngle); // scale to 5 degrees
-        Serial.printf("  DB %d", center + deadband);
+        //Serial.printf("  DB %d", center + deadband);
     }
 
     // Below deadband, set negative angle
     else if (centeredSignal < -deadband) {
         newTargetAngle = (centeredSignal + deadband) / ((center - left - deadband) / maxSteerAngle); // scale to -5 degrees
-        Serial.printf("  DB %d", center - deadband);
+        //Serial.printf("  DB %d", center - deadband);
+    }
+
+    else newTargetAngle = targetAngle; // Within deadband, keep current target angle
+
+    int16_t wasOffset = adProcessor.getWASOffset();
+    int16_t wasOffsetConfig = configManager.getWasOffset();
+    float cpd = adProcessor.getWASCountsPerDegree();
+    Serial.printf("  Off %d %d", wasOffsetConfig, wasOffset);
+
+    // adjust WAS center/offset to create nudge effect only if rowSense feelers are active
+    if (newTargetAngle != targetAngle && newTargetAngle != 0.0f) {
+        wasOffset += (int16_t)(newTargetAngle * cpd * offsetFactor); // add new nudege/shift to WAS offset
+        if (wasOffset > wasOffsetConfig + maxOffset) wasOffset = wasOffsetConfig + maxOffset; // limit max offset
+        if (wasOffset < wasOffsetConfig - maxOffset) wasOffset = wasOffsetConfig - maxOffset; // limit max offset
+        Serial.printf(" %d", wasOffset);
+        adProcessor.setWASOffset(wasOffset);
     }
 
     //AutosteerProcessor::getInstance()->setTargetAngle(steerAngle);
