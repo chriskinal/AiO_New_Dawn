@@ -26,7 +26,12 @@ private:
 
 public:
     // Get singleton instance
-    static RTCMProcessor* getInstance() { return instance; }
+    static RTCMProcessor* getInstance() {
+        if (instance == nullptr) {
+            instance = new RTCMProcessor();
+        }
+        return instance;
+    }
     
     // Process incoming RTCM data from network
     void processRTCM(const uint8_t* data, size_t len, const IPAddress& remoteIP, uint16_t remotePort);

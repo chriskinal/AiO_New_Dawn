@@ -60,6 +60,9 @@ NAVProcessor::~NAVProcessor() {
 }
 
 NAVProcessor* NAVProcessor::getInstance() {
+    if (instance == nullptr) {
+        instance = new NAVProcessor();
+    }
     return instance;
 }
 

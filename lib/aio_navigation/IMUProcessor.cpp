@@ -37,6 +37,9 @@ IMUProcessor::~IMUProcessor()
 
 IMUProcessor *IMUProcessor::getInstance()
 {
+    if (instance == nullptr) {
+        instance = new IMUProcessor();
+    }
     return instance;
 }
 

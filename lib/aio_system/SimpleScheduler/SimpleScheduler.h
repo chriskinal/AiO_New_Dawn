@@ -10,7 +10,7 @@
 class SimpleScheduler {
 public:
     // Configuration constants
-    static constexpr uint8_t MAX_TASKS_PER_GROUP = 8;
+    static constexpr uint8_t MAX_TASKS_PER_GROUP = 16;  // Increased from 8 to accommodate all EVERY_LOOP tasks
     static constexpr uint8_t NUM_GROUPS = 7;
 
     // Group indices for direct access
