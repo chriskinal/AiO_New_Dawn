@@ -224,7 +224,7 @@ void taskKickoutSendPGN250() {
 
 void setup()
 {
-  delay(5000); // delay for time to start monitor
+  //delay(5000); // delay for time to start monitor
   Serial.begin(115200);
 
   Serial.print("\r\n\n=== Teensy 4.1 AiO-NG-v6 New Dawn v");
@@ -569,9 +569,10 @@ void loop()
   scheduler.run();
 
 
-  if (SerialRadio.available()) {
+  /*if (SerialRadio.available()) {
     SerialGPS1.write(SerialRadio.read());
-  }
+  }*/
+  RTCMProcessor::getInstance()->process();
   
   // Loop timing - ultra lightweight, just increment counter
   if (loopTimingEnabled) {
