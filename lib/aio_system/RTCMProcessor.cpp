@@ -130,6 +130,7 @@ void RTCMProcessor::processRadioRTCM()
 
 void RTCMProcessor::process()
 {
+    Serial.print("RTCMProcessor::process() called\r\n");
     // Process all RTCM sources
     // Network RTCM is handled via UDP callback
     // Process radio RTCM here
