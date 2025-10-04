@@ -39,7 +39,7 @@ void RTCMProcessor::init()
 
 // Remove static callback - QNEthernet uses a different approach
 
-void RTCMProcessor::processRTCM(const uint8_t* data, size_t len, const IPAddress& remoteIP, uint16_t remotePort)
+void RTCMProcessor::processRTCM(const uint8_t *data, size_t len, const IPAddress &remoteIP, uint16_t remotePort)
 {
     // Match the original code logic exactly
     if (!QNetworkBase::isConnected())
@@ -51,16 +51,17 @@ void RTCMProcessor::processRTCM(const uint8_t* data, size_t len, const IPAddress
     {
         // Write directly to serial port
         SerialGPS1.write(data, len);
-        
+
         // Pulse GPS LED blue for RTCM packet
         ledManagerFSM.pulseRTCM();
-        
+
         // Log RTCM activity periodically
         static uint32_t lastRTCMLog = 0;
         static uint32_t rtcmPacketCount = 0;
         rtcmPacketCount++;
-        
-        if (millis() - lastRTCMLog > 5000) {
+
+        if (millis() - lastRTCMLog > 5000)
+        {
             lastRTCMLog = millis();
             LOG_DEBUG(EventSource::NETWORK, "RTCM: %lu packets from %d.%d.%d.%d:%d",
                       rtcmPacketCount, remoteIP[0], remoteIP[1], remoteIP[2], remoteIP[3], remotePort);
@@ -78,12 +79,12 @@ void RTCMProcessor::processRadioRTCM()
     static uint32_t lastRadioLog = 0;
     static uint32_t lastDataTime = 0;
     static bool radioDataActive = false;
-    Serial.print("Process radio)");
     // Simple direct forwarding - exactly like the working test code
     if (SerialRadio.available())
     {
         // Track activity
-        if (!radioDataActive) {
+        if (!radioDataActive)
+        {
             radioDataActive = true;
             LOG_INFO(EventSource::NETWORK, "Radio RTCM data stream started");
         }
@@ -105,13 +106,15 @@ void RTCMProcessor::processRadioRTCM()
     }
 
     // Log radio RTCM statistics periodically
-    if (radioByteCount > 0 && millis() - lastRadioLog > 5000) {
+    if (radioByteCount > 0 && millis() - lastRadioLog > 5000)
+    {
         lastRadioLog = millis();
         LOG_INFO(EventSource::NETWORK, "Radio RTCM: %lu bytes received, %lu forwarded to GPS1",
                  radioByteCount, forwardedByteCount);
 
         // Check for data loss
-        if (forwardedByteCount < radioByteCount) {
+        if (forwardedByteCount < radioByteCount)
+        {
             LOG_WARNING(EventSource::NETWORK, "Radio RTCM data loss: %lu bytes dropped",
                         radioByteCount - forwardedByteCount);
         }
@@ -122,7 +125,8 @@ void RTCMProcessor::processRadioRTCM()
     }
 
     // Detect when radio data stream stops
-    if (radioDataActive && millis() - lastDataTime > 10000) {
+    if (radioDataActive && millis() - lastDataTime > 10000)
+    {
         radioDataActive = false;
         LOG_INFO(EventSource::NETWORK, "Radio RTCM data stream stopped");
     }
