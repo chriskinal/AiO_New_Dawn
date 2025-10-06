@@ -167,13 +167,14 @@ void AutosteerProcessor::initializeFusion() {
 }
 
 float AutosteerProcessor::rowSenseProcess(float targetAngle) {
-    int center = 742;  // Center value for Row Sense (adjust as needed)
-    int left = 317;    // Left limit (adjust as needed), ~0.8V
-    int right = 1238;  // Right limit (adjust as needed), ~3.6V
-    int deadband = 20; // Deadband around center value (adjust as needed), 34 = ~0.1V
+    int center = 1722;  // Center value for Row Sense (adjust as needed)
+    int left = 2050;    // Left limit (adjust as needed), ~0.8V
+    int right = 1400;  // Right limit (adjust as needed), ~3.6V
+    int deadband = 50; // Deadband around center value (adjust as needed), 34 = ~0.1V
     float maxSteerAngle = 5.0f; // Maximum steer angle for row sense (degrees)
     float offsetFactor = 0.1f; // Factor to adjust nudge effect (adjust as needed)
-    int maxOffset = 1000; // Maximum WAS offset adjustment (in counts)
+    int maxOffset = 300; // Maximum WAS offset adjustment (in counts)
+    // 250 = 26", 300 = 31"
 
     uint32_t now = millis();
 
@@ -183,24 +184,24 @@ float AutosteerProcessor::rowSenseProcess(float targetAngle) {
     int rawSignal = analogRead(hardwareManager.getKickoutAPin());
 
     static float aveSignal = 0.0f;
-    aveSignal = aveSignal * 0.5f + rawSignal * 0.5f; // Simple moving average
-
-    if ((int)aveSignal < left - 10 || (int)aveSignal > right + 10) return targetAngle;  // Ignore out of range values and return current target angle
+    aveSignal = aveSignal * 0.9f + rawSignal * 0.1f; // Simple moving average
 
     int centeredSignal = (int)aveSignal - center;
     Serial.printf("\r\nRow Sense: Raw %4d  Ave %4d  Cen %3d", rawSignal, (int)aveSignal, centeredSignal);
+
+    if ((int)aveSignal < right - 10 || (int)aveSignal > left + 10) return targetAngle;  // Ignore out of range values and return current target angle
 
     float newTargetAngle = 0.0f;  // set default 0 deg steer angle
 
     // Above deadband, set positive angle
     if (centeredSignal > deadband) {
-        newTargetAngle = (centeredSignal - deadband) / ((right - center - deadband) / maxSteerAngle); // scale to 5 degrees
+        newTargetAngle = (centeredSignal - deadband) / ((left - center - deadband) / maxSteerAngle); // scale to 5 degrees
         //Serial.printf("  DB %d", center + deadband);
     }
 
     // Below deadband, set negative angle
     else if (centeredSignal < -deadband) {
-        newTargetAngle = (centeredSignal + deadband) / ((center - left - deadband) / maxSteerAngle); // scale to -5 degrees
+        newTargetAngle = (centeredSignal + deadband) / ((center - right - deadband) / maxSteerAngle); // scale to -5 degrees
         //Serial.printf("  DB %d", center - deadband);
     }
 
