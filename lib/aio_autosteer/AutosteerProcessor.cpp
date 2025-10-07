@@ -1180,7 +1180,26 @@ void AutosteerProcessor::updateMotorControl() {
         } else if (pwmDrive < -highPWM) {
             pwmDrive = -highPWM;
         }
-        
+
+        // Check for hard acceleration - soften if needed
+        uint8_t accelThreshold = (uint8_t)((highPWM - minPWM) * ACCEL_THRESHOLD_RATIO);
+        if ((abs(pwmDrive) > (highPWM - accelThreshold)) &&
+            (abs(motorPWM) < (minPWM + accelThreshold)) &&
+            (motorState == MotorState::NORMAL_CONTROL)) {
+            motorState = MotorState::SOFT_ACCEL;
+            softStartBeginTime = millis();
+            LOG_DEBUG(EventSource::AUTOSTEER, "Hard acceleration detected - entering soft accel mode");
+        }
+
+        // Check for direction change - if so, enter soft-start again
+        if (((motorPWM > 0 && pwmDrive < 0) || (motorPWM < 0 && pwmDrive > 0)) &&
+            (abs(pwmDrive) > (minPWM + DIRECTION_CHANGE_THRESHOLD)) &&
+            (motorState == MotorState::NORMAL_CONTROL)) {
+            motorState = MotorState::SOFT_START;
+            softStartBeginTime = millis();
+            LOG_DEBUG(EventSource::AUTOSTEER, "Direction change detected - entering soft start mode");
+        }
+
         // Store final PWM value
         motorPWM = pwmDrive;
         
@@ -1200,43 +1219,52 @@ void AutosteerProcessor::updateMotorControl() {
                       motorPWM, highPWM);
         }
         
-        // Apply soft-start if active
-        if (motorState == MotorState::SOFT_START) {
-                uint32_t elapsed = millis() - softStartBeginTime;
-                
-                if (elapsed >= softStartDurationMs) {
-                    // Soft-start complete, transition to normal
-                    motorState = MotorState::NORMAL_CONTROL;
-                    LOG_INFO(EventSource::AUTOSTEER, "Motor ACTIVE - normal steering control");
-                } else {
-                    // Calculate ramp progress (0.0 to 1.0)
-                    float rampProgress = (float)elapsed / softStartDurationMs;
-                    
+        // Apply soft ramp if active (soft-start or soft-accel)
+        if (motorState == MotorState::SOFT_START || motorState == MotorState::SOFT_ACCEL) {
+            uint32_t elapsed = millis() - softStartBeginTime;
+            uint16_t durationMs = (motorState == MotorState::SOFT_START) ?
+                                  softStartDurationMs : softAccelDurationMs;
+            const char* modeName = (motorState == MotorState::SOFT_START) ?
+                                  "Soft-start" : "Soft-accel";
+
+            if (elapsed >= durationMs) {
+                // Ramp complete, transition to normal
+                motorState = MotorState::NORMAL_CONTROL;
+                LOG_INFO(EventSource::AUTOSTEER, "%s complete - normal steering control", modeName);
+            } else {
+                // Calculate ramp progress (0.0 to 1.0)
+                float rampProgress = (float)elapsed / (float)durationMs;
+
+                // Apply ramp function based on configuration
+                float rampValue;
+                if (useSineRamp) {
                     // Use sine curve for smooth acceleration (slow-fast-slow)
-                    float sineRamp = sin(rampProgress * PI / 2.0f);
-                    
-                    // Calculate soft-start limit based on lowPWM
-                    uint8_t lowPWM = configManager.getLowPWM();
-                    int16_t softStartLimit = (int16_t)(lowPWM * softStartMaxPWM * sineRamp);
-                    
-                    // Apply limit in direction of motor PWM
-                    if (motorPWM > 0) {
-                        motorPWM = min(motorPWM, softStartLimit);
-                    } else if (motorPWM < 0) {
-                        motorPWM = max(motorPWM, -softStartLimit);
-                    }
-                    
-                    softStartRampValue = (float)softStartLimit;
-                    
-                    // Debug logging every 50ms during soft-start
-                    static uint32_t lastSoftStartDebug = 0;
-                    if (millis() - lastSoftStartDebug > 50) {
-                        lastSoftStartDebug = millis();
-                        LOG_DEBUG(EventSource::AUTOSTEER, "Soft-start: elapsed=%dms, progress=%.2f, limit=%d, pwm=%d", 
-                                  elapsed, rampProgress, softStartLimit, motorPWM);
-                    }
+                    rampValue = sin(rampProgress * PI / 2.0f);
+                } else {
+                    // Use linear ramp
+                    rampValue = rampProgress;
+                }
+
+                // Apply ramp to motor PWM
+                int16_t originalPWM = motorPWM;
+                motorPWM = (int16_t)((float)motorPWM * rampValue);
+
+                // Enforce minimum PWM threshold if motor should be moving
+                if (originalPWM != 0 && abs(motorPWM) < minPWM) {
+                    motorPWM = (originalPWM > 0) ? minPWM : -minPWM;
+                }
+
+                softStartRampValue = rampValue;
+
+                // Debug logging every 50ms during ramp
+                static uint32_t lastRampDebug = 0;
+                if (millis() - lastRampDebug > 50) {
+                    lastRampDebug = millis();
+                    LOG_DEBUG(EventSource::AUTOSTEER, "%s: elapsed=%dms, progress=%.2f, ramp=%.2f, pwm=%d->%d",
+                              modeName, elapsed, rampProgress, rampValue, originalPWM, motorPWM);
                 }
             }
+        }
     } else {
         // No valid PWM config
         motorPWM = 0;
