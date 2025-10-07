@@ -1180,8 +1180,11 @@ void AutosteerProcessor::updateMotorControl() {
         } else if (pwmDrive < -highPWM) {
             pwmDrive = -highPWM;
         }
-                // Check for hard accleration - soften if needed
-        if ((abs(pwmDrive)>200) && (abs(motorPWM)<100) && (motorState != MotorState::SOFT_ACCEL) && (motorState != MotorState::SOFT_START)) {
+                
+        // Check for hard accleration - soften if needed
+        uint8_t MaxMinDiffPWM3 = (highPWM - minPWM)/3;
+        if ((abs(pwmDrive) > (highPWM - MaxMinDiffPWM3)) && (abs(motorPWM) < (minPWM + MaxMinDiffPWM3))
+            && (motorState != MotorState::SOFT_ACCEL) && (motorState != MotorState::SOFT_START)) {
             motorState = MotorState::SOFT_ACCEL;
             softStartBeginTime = millis();
             //Serial.print("pwmDrive: ");Serial.print(pwmDrive);Serial.print(" motorPWM: ");Serial.print(motorPWM);
@@ -1189,7 +1192,7 @@ void AutosteerProcessor::updateMotorControl() {
         }
         // Check for direction change - if so, enter soft-start again. Useful to avoid current spikes when changing drive direction.
         if (((motorPWM > 0 && pwmDrive < 0) || (motorPWM < 0 && pwmDrive > 0)) && (abs(pwmDrive) > (minPWM+20)) 
-                    && ((motorState != MotorState::SOFT_START) || (motorState != MotorState::SOFT_ACCEL))) {
+                    && (motorState != MotorState::SOFT_START)) {
             motorState = MotorState::SOFT_START;
             softStartBeginTime = millis();
             //Serial.println("Direction change - soft start" );
