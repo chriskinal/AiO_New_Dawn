@@ -70,6 +70,7 @@ private:
     enum class MotorState {
         DISABLED,
         SOFT_START,
+        SOFT_ACCEL,
         NORMAL_CONTROL
     };
     
@@ -78,9 +79,10 @@ private:
     float softStartRampValue = 0.0f;
     
     // Soft-start parameters (configurable via Web UI)
-    uint16_t softStartDurationMs = 175;     // Duration of soft-start ramp (150-200ms range)
-    float softStartMaxPWM = 0.4f;           // Maximum PWM during soft-start (percentage of lowPWM)
-    
+    uint16_t softStartDurationMs = 1000;//175;     // Duration of soft-start ramp (400-1000ms range)
+    uint16_t softAccelDurationMs = 500;//175;     // Duration of soft-accelleration ramp: half of soft start recommended (150-500ms range)
+    //float softStartMaxPWM = 0.4f;           // Maximum PWM during soft-start (percentage of lowPWM)
+   
     // Link state tracking
     bool linkWasDown = false;               // Track if link was down
     
@@ -135,12 +137,12 @@ public:
     // Soft-start configuration
     uint16_t getSoftStartDuration() const { return softStartDurationMs; }
     void setSoftStartDuration(uint16_t durationMs) { 
-        softStartDurationMs = constrain(durationMs, 0, 500); // Max 500ms
+        softStartDurationMs = constrain(durationMs, 0, 1000); // Max 1000ms
     }
     
-    float getSoftStartMaxPWM() const { return softStartMaxPWM; }
-    void setSoftStartMaxPWM(float maxPWM) { 
-        softStartMaxPWM = constrain(maxPWM, 0.0f, 1.0f); // 0-100% of lowPWM
+    uint16_t getSoftAccelDuration() const { return softAccelDurationMs; }
+    void setSoftAccelDuration(uint16_t durationMs) { 
+        softAccelDurationMs = constrain(durationMs, 0, 500); // Max 500ms
     }
 };
 
