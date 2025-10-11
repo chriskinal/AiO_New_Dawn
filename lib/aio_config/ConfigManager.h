@@ -96,6 +96,7 @@ private:
     bool gpsSyncMode;
     bool gpsPassThrough;
     uint8_t gpsProtocol;
+    uint32_t serialRadioBaudRate;  // RTK radio baud rate (4800-921600)
 
     // Machine settings (EEPROM 500-599)
     uint8_t sectionCount;
@@ -248,6 +249,8 @@ public:
     void setGPSPassThrough(bool value) { gpsPassThrough = value; }
     uint8_t getGPSProtocol() const { return gpsProtocol; }
     void setGPSProtocol(uint8_t value) { gpsProtocol = value; }
+    uint32_t getSerialRadioBaudRate() const { return serialRadioBaudRate; }
+    void setSerialRadioBaudRate(uint32_t value) { serialRadioBaudRate = value; }
 
     // Machine configuration methods
     uint8_t getSectionCount() const { return sectionCount; }

@@ -2,7 +2,7 @@
 #define VERSION_H
 
 // AiO New Dawn firmware version
-#define FIRMWARE_VERSION "1.0.75-beta" // Fix CAN config checkbox restoration - properly load bitfield values into UI
+#define FIRMWARE_VERSION "1.0.76-beta" // Added configurable serial radio baud rate for RTK corrections
 
 // Teensy board type for OTA identification
 #define TEENSY_BOARD_TYPE "Teensy41"

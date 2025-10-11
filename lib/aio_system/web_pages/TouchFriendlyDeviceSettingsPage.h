@@ -214,6 +214,7 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                 sensorFusion: document.getElementById('sensorFusion').checked,
                 pwmBrakeMode: document.getElementById('pwmBrakeMode').checked,
                 encoderType: parseInt(document.getElementById('encoderType').value),
+                serialRadioBaud: parseInt(document.getElementById('serialRadioBaud').value),
                 jdPWMEnabled: document.getElementById('jdPWMEnabled').checked,
                 jdPWMSensitivity: parseInt(document.getElementById('jdPWMSensitivity').value)
             };
@@ -262,6 +263,7 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                     document.getElementById('sensorFusion').checked = data.sensorFusion || false;
                     document.getElementById('pwmBrakeMode').checked = data.pwmBrakeMode || false;
                     document.getElementById('encoderType').value = data.encoderType || 1;
+                    document.getElementById('serialRadioBaud').value = data.serialRadioBaud || 115200;
                     document.getElementById('jdPWMEnabled').checked = data.jdPWMEnabled || false;
                     document.getElementById('jdPWMSensitivity').value = data.jdPWMSensitivity || 5;
                     updateSensitivityValue(data.jdPWMSensitivity || 5);
@@ -342,6 +344,25 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                     </select>
                     <div class="help-text" style="margin-top: 5px;">
                         Single channel encoders use only the Kickout-D pin. Quadrature encoders use both Kickout-A and Kickout-D pins for direction sensing and higher resolution.
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="serialRadioBaud">RTK Radio Baud Rate:</label>
+                    <select id="serialRadioBaud" name="serialRadioBaud">
+                        <option value="4800">4800</option>
+                        <option value="9600">9600</option>
+                        <option value="14400">14400</option>
+                        <option value="19200">19200</option>
+                        <option value="38400">38400</option>
+                        <option value="57600">57600</option>
+                        <option value="115200">115200 (Default)</option>
+                        <option value="230400">230400</option>
+                        <option value="460800">460800</option>
+                        <option value="921600">921600</option>
+                    </select>
+                    <div class="help-text" style="margin-top: 5px;">
+                        Set the baud rate for the serial radio (XBee) used for RTK corrections. Some radios cannot easily change their baud rate, so match this setting to your radio's configuration.
                     </div>
                 </div>
                 

@@ -601,6 +601,7 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         doc["sensorFusion"] = false;  // Sensor fusion not implemented yet
         doc["pwmBrakeMode"] = config->getPWMBrakeMode();
         doc["encoderType"] = config->getEncoderType();
+        doc["serialRadioBaud"] = config->getSerialRadioBaudRate();
         doc["jdPWMEnabled"] = config->getJDPWMEnabled();
         doc["jdPWMSensitivity"] = config->getJDPWMSensitivity();
         
@@ -626,14 +627,16 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         bool sensorFusion = doc["sensorFusion"] | false;
         bool pwmBrakeMode = doc["pwmBrakeMode"] | false;
         int encoderType = doc["encoderType"] | 1;
+        uint32_t serialRadioBaud = doc["serialRadioBaud"] | 115200;
         bool jdPWMEnabled = doc["jdPWMEnabled"] | false;
         int jdPWMSensitivity = doc["jdPWMSensitivity"] | 5;
-        
+
         // Save to ConfigManager
         ConfigManager* config = ConfigManager::getInstance();
         config->setGPSPassThrough(udpPassthrough);
         config->setPWMBrakeMode(pwmBrakeMode);
         config->setEncoderType(encoderType);
+        config->setSerialRadioBaudRate(serialRadioBaud);
         config->setJDPWMEnabled(jdPWMEnabled);
         config->setJDPWMSensitivity(jdPWMSensitivity);
         // Sensor fusion configuration not implemented yet
@@ -649,9 +652,13 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         
         // Update GNSSProcessor with new passthrough setting
         gnssProcessor.setUDPPassthrough(udpPassthrough);
-        
-        LOG_DEBUG(EventSource::NETWORK, "Device settings saved: UDP=%d, Brake=%d, Encoder=%d", 
-                  udpPassthrough, pwmBrakeMode, encoderType);
+
+        // Apply new radio baud rate immediately
+        extern SerialManager serialManager;
+        serialManager.updateRadioBaudRate(serialRadioBaud);
+
+        LOG_DEBUG(EventSource::NETWORK, "Device settings saved: UDP=%d, Brake=%d, Encoder=%d, RadioBaud=%lu",
+                  udpPassthrough, pwmBrakeMode, encoderType, serialRadioBaud);
         
         SimpleHTTPServer::sendJSON(client, "{\"status\":\"saved\"}");
         
