@@ -205,6 +205,8 @@ void ConfigManager::saveGPSConfig()
     EEPROM.put(addr, gpsConfigByte);
     addr += sizeof(gpsConfigByte);
     EEPROM.put(addr, gpsProtocol);
+    addr += sizeof(gpsProtocol);
+    EEPROM.put(addr, serialRadioBaudRate);
 }
 
 void ConfigManager::loadGPSConfig()
@@ -217,9 +219,16 @@ void ConfigManager::loadGPSConfig()
     EEPROM.get(addr, gpsConfigByte);
     addr += sizeof(gpsConfigByte);
     EEPROM.get(addr, gpsProtocol);
+    addr += sizeof(gpsProtocol);
+    EEPROM.get(addr, serialRadioBaudRate);
 
     gpsSyncMode = (gpsConfigByte & 0x01) != 0;
     gpsPassThrough = (gpsConfigByte & 0x02) != 0;
+
+    // Set default if not initialized
+    if (serialRadioBaudRate == 0 || serialRadioBaudRate == 0xFFFFFFFF) {
+        serialRadioBaudRate = 115200;  // Default to 115200
+    }
 }
 
 void ConfigManager::saveMachineConfig()
@@ -442,6 +451,7 @@ void ConfigManager::resetToDefaults()
     gpsSyncMode = false;
     gpsPassThrough = false;
     gpsProtocol = 0;
+    serialRadioBaudRate = 115200; // Default serial radio baud rate
 
     // Machine config defaults
     sectionCount = 8;

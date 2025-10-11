@@ -93,6 +93,9 @@ public:
     void printSerialConfiguration();
     bool getInitializationStatus() const;
     bool isSerialInitialized() const;
+
+    // Dynamic configuration
+    void updateRadioBaudRate(uint32_t newBaudRate);
 };
 
 // Global instance (following the same pattern as configManager)

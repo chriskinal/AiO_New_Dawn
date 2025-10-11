@@ -1,5 +1,6 @@
 #include "SerialManager.h"
 #include "EventLogger.h"
+#include "ConfigManager.h"
 
 // Static instance pointer
 SerialManager *SerialManager::instance = nullptr;
@@ -60,7 +61,13 @@ bool SerialManager::initializeSerialPorts()
     SerialGPS2.addMemoryForWrite(gps2TxBuffer, sizeof(gps2TxBuffer));
 
     // Radio Serial (for RTCM data) - use class member buffer
-    SerialRadio.begin(BAUD_RADIO);
+    // Get baud rate from configuration
+    ConfigManager* config = ConfigManager::getInstance();
+    uint32_t radioBaud = config->getSerialRadioBaudRate();
+    if (radioBaud == 0 || radioBaud == 0xFFFFFFFF) {
+        radioBaud = BAUD_RADIO; // Use default if not configured
+    }
+    SerialRadio.begin(radioBaud);
     SerialRadio.addMemoryForRead(radioRxBuffer, sizeof(radioRxBuffer));
 
     // RS232 Serial - use class member buffer
@@ -76,7 +83,7 @@ bool SerialManager::initializeSerialPorts()
     serialIMU->begin(BAUD_IMU);
 
     LOG_DEBUG(EventSource::SYSTEM, "SerialGPS1/GPS2: %i baud", BAUD_GPS);
-    LOG_DEBUG(EventSource::SYSTEM, "SerialRadio: %i baud", BAUD_RADIO);
+    LOG_DEBUG(EventSource::SYSTEM, "SerialRadio: %lu baud", radioBaud);
     LOG_DEBUG(EventSource::SYSTEM, "SerialRS232: %i baud", BAUD_RS232);
     LOG_DEBUG(EventSource::SYSTEM, "SerialESP32: %i baud", BAUD_ESP32);
     LOG_DEBUG(EventSource::SYSTEM, "SerialIMU: %i baud", BAUD_IMU);
@@ -246,4 +253,23 @@ bool SerialManager::getInitializationStatus() const
 bool SerialManager::isSerialInitialized() const
 {
     return isInitialized;
+}
+
+void SerialManager::updateRadioBaudRate(uint32_t newBaudRate)
+{
+    // Validate baud rate
+    if (newBaudRate < 4800 || newBaudRate > 921600) {
+        LOG_ERROR(EventSource::SYSTEM, "Invalid radio baud rate: %lu", newBaudRate);
+        return;
+    }
+
+    LOG_INFO(EventSource::SYSTEM, "Updating radio baud rate to %lu", newBaudRate);
+
+    // Close and reopen the serial port with new baud rate
+    SerialRadio.end();
+    delay(10); // Brief delay to ensure port closes properly
+    SerialRadio.begin(newBaudRate);
+    SerialRadio.addMemoryForRead(radioRxBuffer, sizeof(radioRxBuffer));
+
+    LOG_INFO(EventSource::SYSTEM, "Radio baud rate updated successfully");
 }
