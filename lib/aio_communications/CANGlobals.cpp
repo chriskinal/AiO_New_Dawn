@@ -3,10 +3,10 @@
 #include <Arduino.h>
 #include "EventLogger.h"
 
-// Instantiate the global CAN objects
-FlexCAN_T4<CAN1, RX_SIZE_256, TX_SIZE_16> globalCAN1;
-FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> globalCAN2;
-FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_256> globalCAN3;
+// Instantiate the global CAN objects with reduced buffers (hardware filtering protects against overflow)
+FlexCAN_T4<CAN1, RX_SIZE_16, TX_SIZE_16> globalCAN1;
+FlexCAN_T4<CAN2, RX_SIZE_16, TX_SIZE_16> globalCAN2;
+FlexCAN_T4<CAN3, RX_SIZE_32, TX_SIZE_64> globalCAN3;
 
 // Default speeds
 static uint32_t can1Speed = 250000;
