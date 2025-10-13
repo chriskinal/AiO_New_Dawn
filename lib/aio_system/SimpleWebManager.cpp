@@ -1201,8 +1201,16 @@ void SimpleWebManager::handleUM98xWrite(EthernetClient& client) {
 void SimpleWebManager::handleCANInfo(EthernetClient& client) {
     // Check if custom configuration exists in LittleFS
     if (CANConfigStorage::hasCustomConfig()) {
+        LOG_INFO(EventSource::NETWORK, "Custom CAN config exists, loading from LittleFS");
+
+        // Get file size first
+        size_t fileSize = CANConfigStorage::getCustomConfigSize();
+        LOG_INFO(EventSource::NETWORK, "File size on disk: %d bytes", fileSize);
+
         // Serve custom configuration from flash
         String customConfig = CANConfigStorage::readCustomConfig();
+        LOG_INFO(EventSource::NETWORK, "After readCustomConfig(): String length = %d bytes", customConfig.length());
+
         if (customConfig.length() > 0) {
             // Send HTTP headers WITHOUT Content-Length (use Connection: close instead)
             client.print("HTTP/1.1 200 OK\r\n");
@@ -1210,20 +1218,31 @@ void SimpleWebManager::handleCANInfo(EthernetClient& client) {
             client.print("Connection: close\r\n");
             client.print("\r\n");
 
+            LOG_INFO(EventSource::NETWORK, "Starting chunked transmission of %d bytes", customConfig.length());
+
             // Send JSON in chunks to avoid buffer limitations
             const size_t CHUNK_SIZE = 512;
             size_t sent = 0;
             while (sent < customConfig.length()) {
                 size_t toSend = min(CHUNK_SIZE, customConfig.length() - sent);
-                client.write((const uint8_t*)(customConfig.c_str() + sent), toSend);
+                size_t written = client.write((const uint8_t*)(customConfig.c_str() + sent), toSend);
                 sent += toSend;
+
+                // Log every 5KB
+                if (sent % 5120 < CHUNK_SIZE) {
+                    LOG_INFO(EventSource::NETWORK, "Sent %d/%d bytes (chunk wrote %d bytes)", sent, customConfig.length(), written);
+                }
             }
-            client.flush();  // Final flush
+            client.flush();
+            LOG_INFO(EventSource::NETWORK, "Transmission complete - sent %d bytes total", sent);
             return;
+        } else {
+            LOG_WARNING(EventSource::NETWORK, "Custom config exists but length is 0");
         }
     }
 
     // Fallback to default configuration from PROGMEM
+    LOG_INFO(EventSource::NETWORK, "Serving default CAN config from PROGMEM");
     SimpleHTTPServer::sendP(client, 200, "application/json", CAN_INFO_JSON);
 }
 
