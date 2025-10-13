@@ -130,13 +130,54 @@ const char CAN_CONFIG_UPLOAD_PAGE[] PROGMEM = R"rawliteral(
         function displayFileName() {
             const fileInput = document.getElementById('file');
             const fileInfo = document.getElementById('fileInfo');
+            const feedback = document.getElementById('feedback');
+            const uploadBtn = document.getElementById('uploadBtn');
             const file = fileInput.files[0];
 
             if (file) {
                 fileInfo.innerHTML = '<strong>Selected file:</strong> ' + file.name + ' (' + file.size + ' bytes)';
                 fileInfo.style.display = 'block';
+
+                // Automatically validate on file selection
+                feedback.textContent = 'Validating JSON file...';
+                uploadBtn.disabled = true;
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const content = e.target.result;
+                    const validation = validateJSON(content);
+
+                    if (!validation.valid) {
+                        feedback.textContent = 'VALIDATION FAILED:\n' + validation.error + '\n\nPlease select a valid JSON file.';
+                        feedback.style.background = '#ffebee';
+                        feedback.style.border = '2px solid #c62828';
+                        uploadBtn.disabled = true;
+                    } else {
+                        feedback.textContent = 'VALIDATION PASSED!\n' +
+                            '  Version: ' + validation.json.version + '\n' +
+                            '  Brands: ' + validation.json.brands.length + '\n' +
+                            '  Functions: ' + Object.keys(validation.json.functions).length + '\n\n' +
+                            'Ready to upload.';
+                        feedback.style.background = '#e8f5e9';
+                        feedback.style.border = '2px solid #4caf50';
+                        uploadBtn.disabled = false;
+                    }
+                };
+
+                reader.onerror = function() {
+                    feedback.textContent = 'ERROR: Failed to read file';
+                    feedback.style.background = '#ffebee';
+                    feedback.style.border = '2px solid #c62828';
+                    uploadBtn.disabled = true;
+                };
+
+                reader.readAsText(file);
             } else {
                 fileInfo.style.display = 'none';
+                feedback.textContent = '';
+                feedback.style.background = '#f5f5f5';
+                feedback.style.border = '2px solid #bdc3c7';
+                uploadBtn.disabled = true;
             }
         }
 
@@ -184,56 +225,42 @@ const char CAN_CONFIG_UPLOAD_PAGE[] PROGMEM = R"rawliteral(
                 return false;
             }
 
-            if (!file.name.endsWith('.json')) {
-                alert('Please select a .json file');
-                return false;
-            }
-
             const feedback = document.getElementById('feedback');
             const uploadBtn = document.getElementById('uploadBtn');
 
-            feedback.textContent = 'Reading file...';
+            feedback.textContent = 'Uploading to device...';
+            feedback.style.background = '#e3f2fd';
+            feedback.style.border = '2px solid #1976d2';
             uploadBtn.disabled = true;
 
             const reader = new FileReader();
             reader.onload = function(e) {
                 const content = e.target.result;
-                feedback.textContent = 'File loaded: ' + file.name + ' (' + content.length + ' bytes)\n';
-
-                // Validate JSON
-                feedback.textContent += 'Validating JSON format...\n';
-                const validation = validateJSON(content);
-
-                if (!validation.valid) {
-                    feedback.textContent += 'ERROR: ' + validation.error + '\n';
-                    feedback.textContent += 'Upload cancelled.';
-                    uploadBtn.disabled = false;
-                    return;
-                }
-
-                feedback.textContent += 'Validation passed!\n';
-                feedback.textContent += '  Version: ' + validation.json.version + '\n';
-                feedback.textContent += '  Brands: ' + validation.json.brands.length + '\n';
-                feedback.textContent += 'Uploading to device...\n';
 
                 const xhr = new XMLHttpRequest();
 
                 xhr.addEventListener('load', function() {
                     if (xhr.status === 200) {
-                        feedback.textContent += 'Upload successful!\n';
-                        feedback.textContent += 'Custom CAN configuration is now active.\n';
-                        feedback.textContent += 'Redirecting to CAN config page...';
+                        feedback.textContent = 'Upload successful!\n\n' +
+                            'Custom CAN configuration is now active.\n' +
+                            'Redirecting to CAN config page...';
+                        feedback.style.background = '#e8f5e9';
+                        feedback.style.border = '2px solid #4caf50';
                         setTimeout(() => {
                             window.location.href = '/can';
                         }, 2000);
                     } else {
-                        feedback.textContent += 'Upload failed: ' + xhr.responseText;
+                        feedback.textContent = 'Upload failed:\n' + xhr.responseText;
+                        feedback.style.background = '#ffebee';
+                        feedback.style.border = '2px solid #c62828';
                         uploadBtn.disabled = false;
                     }
                 });
 
                 xhr.addEventListener('error', function() {
-                    feedback.textContent += 'Connection error during upload';
+                    feedback.textContent = 'Connection error during upload';
+                    feedback.style.background = '#ffebee';
+                    feedback.style.border = '2px solid #c62828';
                     uploadBtn.disabled = false;
                 });
 
@@ -321,7 +348,7 @@ const char CAN_CONFIG_UPLOAD_PAGE[] PROGMEM = R"rawliteral(
                 <label for="file" class="touch-button">
                     Choose JSON File
                 </label>
-                <button type="button" id="uploadBtn" class="touch-button upload-button" onclick="uploadFile()">
+                <button type="button" id="uploadBtn" class="touch-button upload-button" onclick="uploadFile()" disabled>
                     Upload Configuration
                 </button>
             </div>
