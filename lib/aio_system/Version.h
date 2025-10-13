@@ -2,7 +2,7 @@
 #define VERSION_H
 
 // AiO New Dawn firmware version
-#define FIRMWARE_VERSION "1.0.89-beta" // Added client-side JSON validation before upload
+#define FIRMWARE_VERSION "1.0.90-beta" // Fixed JSON read corruption using buffer-based reading
 
 // Teensy board type for OTA identification
 #define TEENSY_BOARD_TYPE "Teensy41"
