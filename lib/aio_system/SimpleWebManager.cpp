@@ -1204,22 +1204,21 @@ void SimpleWebManager::handleCANInfo(EthernetClient& client) {
         // Serve custom configuration from flash
         String customConfig = CANConfigStorage::readCustomConfig();
         if (customConfig.length() > 0) {
-            // Send HTTP headers
+            // Send HTTP headers WITHOUT Content-Length (use Connection: close instead)
             client.print("HTTP/1.1 200 OK\r\n");
             client.print("Content-Type: application/json\r\n");
-            client.printf("Content-Length: %d\r\n", customConfig.length());
             client.print("Connection: close\r\n");
             client.print("\r\n");
 
             // Send JSON in chunks to avoid buffer limitations
-            const size_t CHUNK_SIZE = 1024;
+            const size_t CHUNK_SIZE = 512;
             size_t sent = 0;
             while (sent < customConfig.length()) {
                 size_t toSend = min(CHUNK_SIZE, customConfig.length() - sent);
                 client.write((const uint8_t*)(customConfig.c_str() + sent), toSend);
                 sent += toSend;
-                client.flush();  // Flush after each chunk
             }
+            client.flush();  // Final flush
             return;
         }
     }
