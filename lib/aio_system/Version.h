@@ -2,7 +2,7 @@
 #define VERSION_H
 
 // AiO New Dawn firmware version
-#define FIRMWARE_VERSION "1.0.91-beta" // Fixed JSON read using File.readString()
+#define FIRMWARE_VERSION "1.0.92-beta" // Use binary write() for JSON storage
 
 // Teensy board type for OTA identification
 #define TEENSY_BOARD_TYPE "Teensy41"

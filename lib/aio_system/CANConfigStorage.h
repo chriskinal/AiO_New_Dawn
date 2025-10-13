@@ -58,7 +58,8 @@ public:
             return false;
         }
 
-        size_t written = file.print(jsonContent);
+        // Use write() instead of print() to avoid any character interpretation
+        size_t written = file.write((const uint8_t*)jsonContent.c_str(), jsonContent.length());
         file.close();
 
         return (written == jsonContent.length());
