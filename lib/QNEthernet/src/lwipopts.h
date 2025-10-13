@@ -115,8 +115,10 @@ void sys_check_core_locking(const char *file, int line, const char *func);
 // #define IP_REASS_MAXAGE                 15
 // #define IP_REASS_MAX_PBUFS              10
 // #define IP_DEFAULT_TTL                  255
-// #define IP_SOF_BROADCAST                0
-// #define IP_SOF_BROADCAST_RECV           0
+// Disable broadcast filtering - we want to allow all UDP traffic including broadcast
+// Setting these to 0 means no per-socket filtering (broadcast always allowed)
+#define IP_SOF_BROADCAST                0  // No send filter
+#define IP_SOF_BROADCAST_RECV           0  // No receive filter
 // #define IP_FORWARD_ALLOW_TX_ON_RX_NETIF 0
 
 // ICMP options
@@ -131,6 +133,7 @@ void sys_check_core_locking(const char *file, int line, const char *func);
 
 // DHCP options
 // Disabled: AiO New Dawn uses static IP configuration
+// However, we run a custom DHCP server (DHCPLite) on port 67, so accept that port
 #ifndef LWIP_DHCP
 #define LWIP_DHCP                       0  /* LWIP_UDP */
 #endif  // !LWIP_DHCP
@@ -140,6 +143,10 @@ void sys_check_core_locking(const char *file, int line, const char *func);
 // #define LWIP_DHCP_MAX_NTP_SERVERS       1
 // #define LWIP_DHCP_MAX_DNS_SERVERS       DNS_MAX_SERVERS
 // #define LWIP_DHCP_DISCOVER_ADD_HOSTNAME 1
+
+// Accept UDP port 67 (DHCP server) even though LWIP_DHCP is disabled
+// This allows DHCPLite custom DHCP server to receive broadcasts
+#define LWIP_IP_ACCEPT_UDP_PORT(port) ((port) == 67)
 
 // AUTOIP options
 // Disabled: AiO New Dawn uses static IP, AutoIP not needed

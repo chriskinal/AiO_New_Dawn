@@ -215,6 +215,16 @@ EthernetUDP::operator bool() const {
   return listening_;
 }
 
+void EthernetUDP::setBroadcast(bool enable) {
+  if (pcb_ != nullptr) {
+    if (enable) {
+      ip_set_option(pcb_, SOF_BROADCAST);
+    } else {
+      ip_reset_option(pcb_, SOF_BROADCAST);
+    }
+  }
+}
+
 void EthernetUDP::Packet::clear() {
   data.clear();
   addr = *IP_ANY_TYPE;
