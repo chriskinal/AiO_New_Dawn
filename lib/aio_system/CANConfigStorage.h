@@ -44,9 +44,25 @@ public:
             return String();
         }
 
-        // Use readString() method which handles the entire file at once
-        String content = file.readString();
+        // Get file size and allocate buffer
+        size_t fileSize = file.size();
+        char* buffer = new char[fileSize + 1];
+
+        if (!buffer) {
+            file.close();
+            return String();
+        }
+
+        // Binary read into buffer
+        size_t bytesRead = file.read((uint8_t*)buffer, fileSize);
         file.close();
+
+        // Null terminate
+        buffer[bytesRead] = '\0';
+
+        // Create string from buffer
+        String content = buffer;
+        delete[] buffer;
 
         return content;
     }
