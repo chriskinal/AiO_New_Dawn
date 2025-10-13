@@ -5,9 +5,10 @@
 #include <FlexCAN_T4.h>
 
 // Global CAN instances - defined here, instantiated in CANGlobals.cpp
-extern FlexCAN_T4<CAN1, RX_SIZE_256, TX_SIZE_16> globalCAN1;
-extern FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> globalCAN2;
-extern FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_256> globalCAN3;
+// Reduced buffer sizes with hardware mailbox filtering protection
+extern FlexCAN_T4<CAN1, RX_SIZE_16, TX_SIZE_16> globalCAN1;  // 256->16 saves ~12KB
+extern FlexCAN_T4<CAN2, RX_SIZE_16, TX_SIZE_16> globalCAN2;  // 256->16 saves ~12KB
+extern FlexCAN_T4<CAN3, RX_SIZE_32, TX_SIZE_64> globalCAN3;  // 256->32 saves ~11KB
 
 // Initialize all CAN buses
 void initializeGlobalCANBuses();

@@ -96,6 +96,27 @@ public:
 
     // Dynamic configuration
     void updateRadioBaudRate(uint32_t newBaudRate);
+
+    // Buffer usage diagnostics
+    void printBufferUsage();
+    void startBufferMonitoring();
+    void updateBufferStats();
+
+private:
+    // Peak buffer usage tracking
+    struct BufferStats {
+        size_t peakUsage;
+        size_t overflowCount;
+        uint32_t lastCheckTime;
+    };
+
+    BufferStats gps1RxStats = {0, 0, 0};
+    BufferStats gps2RxStats = {0, 0, 0};
+    BufferStats radioRxStats = {0, 0, 0};
+    BufferStats esp32RxStats = {0, 0, 0};
+    BufferStats imuRxStats = {0, 0, 0};
+
+    bool monitoringEnabled = false;
 };
 
 // Global instance (following the same pattern as configManager)

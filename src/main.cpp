@@ -204,6 +204,10 @@ void taskLEDUpdate() {
   ledManagerFSM.updateAll();
 }
 
+void taskBufferStats() {
+  serialManager.updateBufferStats();
+}
+
 void taskNetworkCheck() {
   EventLogger::getInstance()->checkNetworkReady();
 }
@@ -522,6 +526,8 @@ void setup()
   scheduler.addTask(SimpleScheduler::HZ_10, taskNetworkCheck, "Network Check");
   scheduler.addTask(SimpleScheduler::HZ_10, taskNAVProcess, "NAV Process");
   scheduler.addTask(SimpleScheduler::HZ_10, taskKickoutSendPGN250, "PGN250 Send");
+  // Buffer stats disabled - only enable when actually monitoring
+  // scheduler.addTask(SimpleScheduler::HZ_10, taskBufferStats, "Buffer Stats");
   scheduler.addTask(SimpleScheduler::HZ_10, []{
     CommandHandler::getInstance()->process();
   }, "CommandHandler");

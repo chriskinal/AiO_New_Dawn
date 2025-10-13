@@ -140,6 +140,9 @@ class EthernetUDP : public UDP {
   // Returns whether the socket is listening.
   explicit operator bool() const;
 
+  // Enable or disable broadcast on this UDP socket
+  void setBroadcast(bool enable);
+
  private:
   struct Packet final {
     std::vector<uint8_t> data;

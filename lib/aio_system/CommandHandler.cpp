@@ -2,6 +2,7 @@
 #include "ConfigManager.h"
 #include "HardwareManager.h"
 #include "SimpleScheduler/SimpleScheduler.h"
+#include "SerialManager.h"
 
 // External function declarations
 extern void toggleLoopTiming();
@@ -167,7 +168,49 @@ void CommandHandler::handleCommand(char cmd) {
         case 'H':
             showMenu();
             break;
-            
+
+        case 'm':  // Start buffer Monitoring
+        case 'M':
+            Serial.printf("\r\nStarting serial buffer monitoring...\r\n");
+            {
+                extern SerialManager serialManager;
+                serialManager.startBufferMonitoring();
+            }
+            break;
+
+        case 'u':  // View buffer Usage
+        case 'U':
+            {
+                extern SerialManager serialManager;
+                serialManager.printBufferUsage();
+            }
+            break;
+
+        case 'z':  // print scheduler Stats
+        case 'Z':
+            #ifdef SCHEDULER_TIMING_STATS
+            {
+                extern SimpleScheduler scheduler;
+                scheduler.printStats();
+            }
+            #else
+            Serial.printf("\r\nScheduler timing stats not enabled. Add -D SCHEDULER_TIMING_STATS to build flags.\r\n");
+            #endif
+            break;
+
+        case 'x':  // reset scheduler stats (X marks the spot to start fresh)
+        case 'X':
+            #ifdef SCHEDULER_TIMING_STATS
+            {
+                extern SimpleScheduler scheduler;
+                scheduler.resetStats();
+                Serial.printf("\r\nScheduler stats reset.\r\n");
+            }
+            #else
+            Serial.printf("\r\nScheduler timing stats not enabled.\r\n");
+            #endif
+            break;
+
         default:
             Serial.printf("\r\nUnknown command: '%c'\r\n", cmd);
             break;
@@ -191,6 +234,10 @@ void CommandHandler::showMenu() {
     Serial.print("\r\nB - Test buzzer");
     Serial.print("\r\nV - Toggle buzzer volume (loud/quiet)");
     Serial.print("\r\nC - Show scheduler status");
+    Serial.print("\r\nM - Start serial buffer monitoring");
+    Serial.print("\r\nU - View serial buffer usage");
+    Serial.print("\r\nZ - Print scheduler timing stats");
+    Serial.print("\r\nX - Reset scheduler timing stats");
     Serial.print("\r\n? - Show this menu");
     Serial.print("\r\n=========================\r\n");
 }

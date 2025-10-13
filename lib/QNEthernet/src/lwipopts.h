@@ -52,8 +52,8 @@ void sys_check_core_locking(const char *file, int line, const char *func);
 // #define MEMP_NUM_PBUF                      16
 // #define MEMP_NUM_RAW_PCB                   4
 #ifndef MEMP_NUM_UDP_PCB
-// Increment MEMP_NUM_UDP_PCB by 1 for mDNS, if needed:
-#define MEMP_NUM_UDP_PCB                   8  /* 4 */
+// Reduced from 8 since mDNS is disabled
+#define MEMP_NUM_UDP_PCB                   6  /* 4, was 8 for mDNS */
 #endif  // !MEMP_NUM_UDP_PCB
 #ifndef MEMP_NUM_TCP_PCB
 #define MEMP_NUM_TCP_PCB                   8  /* 5 */
@@ -67,17 +67,18 @@ void sys_check_core_locking(const char *file, int line, const char *func);
 // #define MEMP_NUM_FRAG_PBUF                 15
 // #define MEMP_NUM_ARP_QUEUE                 30
 #ifndef MEMP_NUM_IGMP_GROUP
-#define MEMP_NUM_IGMP_GROUP                9  /* 8 */
+// Reduced to 0 since IGMP is disabled
+#define MEMP_NUM_IGMP_GROUP                0  /* 8, was 9 */
 #endif  // !MEMP_NUM_IGMP_GROUP
 /* #define LWIP_NUM_SYS_TIMEOUT_INTERNAL                                \
    (LWIP_TCP + IP_REASSEMBLY + LWIP_ARP + (2*LWIP_DHCP) + LWIP_ACD + \
     LWIP_IGMP + LWIP_DNS + PPP_NUM_TIMEOUTS +                        \
     (LWIP_IPV6*(1 + LWIP_IPV6_REASS + LWIP_IPV6_MLD + LWIP_IPV6_DHCP6)))*/
 #if !defined(LWIP_MDNS_RESPONDER) || LWIP_MDNS_RESPONDER
-// Increment MEMP_NUM_SYS_TIMEOUT by 6 for mDNS:
-#define MEMP_NUM_SYS_TIMEOUT               ((LWIP_NUM_SYS_TIMEOUT_INTERNAL) + (6))  /* LWIP_NUM_SYS_TIMEOUT_INTERNAL */
+// No longer incrementing by 6 since mDNS is disabled:
+// #define MEMP_NUM_SYS_TIMEOUT               ((LWIP_NUM_SYS_TIMEOUT_INTERNAL) + (6))
 #else
-// #define MEMP_NUM_SYS_TIMEOUT               LWIP_NUM_SYS_TIMEOUT_INTERNAL
+#define MEMP_NUM_SYS_TIMEOUT               LWIP_NUM_SYS_TIMEOUT_INTERNAL  /* No +6 for mDNS */
 #endif  // !defined(LWIP_MDNS_RESPONDER) || LWIP_MDNS_RESPONDER
 // #define MEMP_NUM_NETBUF                    2
 // #define MEMP_NUM_NETCONN                   4
@@ -114,8 +115,10 @@ void sys_check_core_locking(const char *file, int line, const char *func);
 // #define IP_REASS_MAXAGE                 15
 // #define IP_REASS_MAX_PBUFS              10
 // #define IP_DEFAULT_TTL                  255
-// #define IP_SOF_BROADCAST                0
-// #define IP_SOF_BROADCAST_RECV           0
+// Disable broadcast filtering - we want to allow all UDP traffic including broadcast
+// Setting these to 0 means no per-socket filtering (broadcast always allowed)
+#define IP_SOF_BROADCAST                0  // No send filter
+#define IP_SOF_BROADCAST_RECV           0  // No receive filter
 // #define IP_FORWARD_ALLOW_TX_ON_RX_NETIF 0
 
 // ICMP options
@@ -129,8 +132,10 @@ void sys_check_core_locking(const char *file, int line, const char *func);
 // #define RAW_TTL  IP_DEFAULT_TTL
 
 // DHCP options
+// Disabled: AiO New Dawn uses static IP configuration
+// However, we run a custom DHCP server (DHCPLite) on port 67, so accept that port
 #ifndef LWIP_DHCP
-#define LWIP_DHCP                       LWIP_UDP  /* 0 */
+#define LWIP_DHCP                       0  /* LWIP_UDP */
 #endif  // !LWIP_DHCP
 #define LWIP_DHCP_DOES_ACD_CHECK        0  /* LWIP_DHCP */
 // #define LWIP_DHCP_BOOTP_FILE            0
@@ -139,14 +144,18 @@ void sys_check_core_locking(const char *file, int line, const char *func);
 // #define LWIP_DHCP_MAX_DNS_SERVERS       DNS_MAX_SERVERS
 // #define LWIP_DHCP_DISCOVER_ADD_HOSTNAME 1
 
+// Accept UDP port 67 (DHCP server) even though LWIP_DHCP is disabled
+// This allows DHCPLite custom DHCP server to receive broadcasts
+#define LWIP_IP_ACCEPT_UDP_PORT(port) ((port) == 67)
+
 // AUTOIP options
+// Disabled: AiO New Dawn uses static IP, AutoIP not needed
 #if !defined(LWIP_MDNS_RESPONDER) || LWIP_MDNS_RESPONDER
-// Add both for mDNS:
-#define LWIP_AUTOIP                 1  /* 0 */
-#define LWIP_DHCP_AUTOIP_COOP       (LWIP_DHCP && LWIP_AUTOIP)  /* 0 */
+// #define LWIP_AUTOIP                 1
+// #define LWIP_DHCP_AUTOIP_COOP       (LWIP_DHCP && LWIP_AUTOIP)
 #else
-// #define LWIP_AUTOIP                 0
-// #define LWIP_DHCP_AUTOIP_COOP       0
+#define LWIP_AUTOIP                 0  /* 0 */
+#define LWIP_DHCP_AUTOIP_COOP       0  /* 0 */
 #endif  // !defined(LWIP_MDNS_RESPONDER) || LWIP_MDNS_RESPONDER
 // #define LWIP_DHCP_AUTOIP_COOP_TRIES 9
 
@@ -161,13 +170,15 @@ void sys_check_core_locking(const char *file, int line, const char *func);
    ((LWIP_IGMP || LWIP_IPV6_MLD) && (LWIP_UDP || LWIP_RAW))*/
 
 // IGMP options
+// Disabled: Multicast not used by AiO New Dawn
 #ifndef LWIP_IGMP
-#define LWIP_IGMP 1  /* 0 */
+#define LWIP_IGMP 0  /* 1 */
 #endif  // !LWIP_IGMP
 
 // DNS options
+// Disabled: AiO New Dawn only uses IP addresses, not hostnames
 #ifndef LWIP_DNS
-#define LWIP_DNS                                LWIP_UDP  /* 0 */
+#define LWIP_DNS                                0  /* LWIP_UDP */
 #endif  // !LWIP_DNS
 // #define DNS_TABLE_SIZE                          4
 // #define DNS_MAX_NAME_LENGTH                     256
@@ -264,10 +275,10 @@ void sys_check_core_locking(const char *file, int line, const char *func);
 // #define LWIP_NETIF_HWADDRHINT          0
 // #define LWIP_NETIF_TX_SINGLE_PBUF      0
 #if !defined(LWIP_MDNS_RESPONDER) || LWIP_MDNS_RESPONDER
-// Increment LWIP_NUM_NETIF_CLIENT_DATA by 1 for mDNS:
-#define LWIP_NUM_NETIF_CLIENT_DATA     1  /* 0 */
+// No longer incrementing by 1 since mDNS is disabled:
+// #define LWIP_NUM_NETIF_CLIENT_DATA     1
 #else
-// #define LWIP_NUM_NETIF_CLIENT_DATA     0
+#define LWIP_NUM_NETIF_CLIENT_DATA     0  /* No +1 for mDNS */
 #endif  // !defined(LWIP_MDNS_RESPONDER) || LWIP_MDNS_RESPONDER
 
 // LOOPIF options
@@ -523,8 +534,9 @@ void sys_check_core_locking(const char *file, int line, const char *func);
   } while (0)  /* do { (sec) = 0; (us) = 0; } while(0) */
 
 // MDNS options (mdns_opts.h)
+// Disabled: mDNS/Bonjour not used by AiO New Dawn
 #ifndef LWIP_MDNS_RESPONDER
-#define LWIP_MDNS_RESPONDER LWIP_UDP && LWIP_IGMP  /* 0 */
+#define LWIP_MDNS_RESPONDER 0  /* LWIP_UDP && LWIP_IGMP */
 // If you change LWIP_MDNS_RESPONDER to zero here then:
 // 1. Reduce MEMP_NUM_SYS_TIMEOUT by 6
 // 2. Change LWIP_AUTOIP and LWIP_DHCP_AUTOIP_COOP to 0

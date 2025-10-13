@@ -273,3 +273,115 @@ void SerialManager::updateRadioBaudRate(uint32_t newBaudRate)
 
     LOG_INFO(EventSource::SYSTEM, "Radio baud rate updated successfully");
 }
+
+void SerialManager::startBufferMonitoring()
+{
+    LOG_INFO(EventSource::SYSTEM, "Starting serial buffer monitoring");
+    monitoringEnabled = true;
+
+    // Reset all stats
+    gps1RxStats = {0, 0, millis()};
+    gps2RxStats = {0, 0, millis()};
+    radioRxStats = {0, 0, millis()};
+    esp32RxStats = {0, 0, millis()};
+    imuRxStats = {0, 0, millis()};
+}
+
+void SerialManager::updateBufferStats()
+{
+    if (!monitoringEnabled) return;
+
+    // Check GPS1 RX buffer
+    size_t gps1Avail = SerialGPS1.available();
+    if (gps1Avail > gps1RxStats.peakUsage) {
+        gps1RxStats.peakUsage = gps1Avail;
+    }
+    // Check for near-overflow (>75% of 128 byte custom buffer)
+    if (gps1Avail > 96) {
+        gps1RxStats.overflowCount++;
+    }
+
+    // Check GPS2 RX buffer
+    size_t gps2Avail = SerialGPS2.available();
+    if (gps2Avail > gps2RxStats.peakUsage) {
+        gps2RxStats.peakUsage = gps2Avail;
+    }
+    if (gps2Avail > 96) {
+        gps2RxStats.overflowCount++;
+    }
+
+    // Check Radio RX buffer
+    size_t radioAvail = SerialRadio.available();
+    if (radioAvail > radioRxStats.peakUsage) {
+        radioRxStats.peakUsage = radioAvail;
+    }
+    // Radio buffer is only 64 bytes
+    if (radioAvail > 48) {
+        radioRxStats.overflowCount++;
+    }
+
+    // Check ESP32 RX buffer
+    size_t esp32Avail = SerialESP32.available();
+    if (esp32Avail > esp32RxStats.peakUsage) {
+        esp32RxStats.peakUsage = esp32Avail;
+    }
+    if (esp32Avail > 192) {
+        esp32RxStats.overflowCount++;
+    }
+
+    // Check IMU RX buffer
+    size_t imuAvail = serialIMU->available();
+    if (imuAvail > imuRxStats.peakUsage) {
+        imuRxStats.peakUsage = imuAvail;
+    }
+}
+
+void SerialManager::printBufferUsage()
+{
+    if (!monitoringEnabled) {
+        LOG_INFO(EventSource::SYSTEM, "Buffer monitoring not started. Call startBufferMonitoring() first.");
+        return;
+    }
+
+    uint32_t uptime = (millis() - gps1RxStats.lastCheckTime) / 1000;
+
+    LOG_INFO(EventSource::SYSTEM, "=== Serial Buffer Usage (uptime: %lu sec) ===", uptime);
+
+    // GPS1 - custom 128 byte RX buffer + core default
+    LOG_INFO(EventSource::SYSTEM, "GPS1 RX: Peak=%u bytes (custom buf=128), overflows=%u",
+             gps1RxStats.peakUsage, gps1RxStats.overflowCount);
+
+    // GPS2 - custom 128 byte RX buffer + core default
+    LOG_INFO(EventSource::SYSTEM, "GPS2 RX: Peak=%u bytes (custom buf=128), overflows=%u",
+             gps2RxStats.peakUsage, gps2RxStats.overflowCount);
+
+    // Radio - custom 64 byte RX buffer + core default
+    LOG_INFO(EventSource::SYSTEM, "Radio RX: Peak=%u bytes (custom buf=64), overflows=%u",
+             radioRxStats.peakUsage, radioRxStats.overflowCount);
+
+    // ESP32 - custom 256 byte RX buffer + core default
+    LOG_INFO(EventSource::SYSTEM, "ESP32 RX: Peak=%u bytes (custom buf=256), overflows=%u",
+             esp32RxStats.peakUsage, esp32RxStats.overflowCount);
+
+    // IMU - core default buffer only
+    LOG_INFO(EventSource::SYSTEM, "IMU RX: Peak=%u bytes (core buf only), overflows=%u",
+             imuRxStats.peakUsage, imuRxStats.overflowCount);
+
+    LOG_INFO(EventSource::SYSTEM, "============================================");
+
+    // Recommendations
+    if (gps1RxStats.peakUsage > 128 || gps2RxStats.peakUsage > 128) {
+        LOG_WARNING(EventSource::SYSTEM, "GPS buffer peak exceeds custom 128 bytes - using core buffers!");
+    }
+    if (radioRxStats.peakUsage > 64) {
+        LOG_WARNING(EventSource::SYSTEM, "Radio buffer peak exceeds custom 64 bytes - using core buffers!");
+    }
+    if (esp32RxStats.peakUsage > 256) {
+        LOG_WARNING(EventSource::SYSTEM, "ESP32 buffer peak exceeds custom 256 bytes - using core buffers!");
+    }
+
+    if (gps1RxStats.peakUsage <= 128 && gps2RxStats.peakUsage <= 128 &&
+        radioRxStats.peakUsage <= 64 && esp32RxStats.peakUsage <= 256) {
+        LOG_INFO(EventSource::SYSTEM, "All buffers within custom sizes - core buffers may be reducible!");
+    }
+}

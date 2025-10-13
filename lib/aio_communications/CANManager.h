@@ -7,10 +7,10 @@
 
 class CANManager {
 public:
-    // Use pointers to global CAN instances
-    FlexCAN_T4<CAN1, RX_SIZE_256, TX_SIZE_16>* can1;
-    FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16>* can2;
-    FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_256>* can3;
+    // Use pointers to global CAN instances (reduced buffer sizes with hardware filtering)
+    FlexCAN_T4<CAN1, RX_SIZE_16, TX_SIZE_16>* can1;
+    FlexCAN_T4<CAN2, RX_SIZE_16, TX_SIZE_16>* can2;
+    FlexCAN_T4<CAN3, RX_SIZE_32, TX_SIZE_64>* can3;
     
     CANManager() : can1(&globalCAN1), can2(&globalCAN2), can3(&globalCAN3) {}
     ~CANManager() = default;

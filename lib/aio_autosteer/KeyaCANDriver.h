@@ -8,8 +8,8 @@
 
 class KeyaCANDriver : public MotorDriverInterface {
 private:
-    // Use pointer to global CAN3
-    FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_256>* can3;
+    // Use pointer to global CAN3 (reduced buffer sizes with hardware filtering)
+    FlexCAN_T4<CAN3, RX_SIZE_32, TX_SIZE_64>* can3;
     
     bool enabled = false;
     int16_t targetPWM = 0;
