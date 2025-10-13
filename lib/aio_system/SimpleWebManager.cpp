@@ -1221,16 +1221,32 @@ void SimpleWebManager::handleCANInfo(EthernetClient& client) {
             LOG_INFO(EventSource::NETWORK, "Starting chunked transmission of %d bytes", customConfig.length());
 
             // Send JSON in chunks to avoid buffer limitations
+            // EthernetClient has limited buffer space, so we need to pace the writes
             const size_t CHUNK_SIZE = 512;
             size_t sent = 0;
             while (sent < customConfig.length()) {
                 size_t toSend = min(CHUNK_SIZE, customConfig.length() - sent);
                 size_t written = client.write((const uint8_t*)(customConfig.c_str() + sent), toSend);
-                sent += toSend;
+
+                // If write returned 0, the buffer is full - wait for it to drain
+                if (written == 0) {
+                    client.flush();  // Force flush
+                    delay(10);  // Give TCP stack time to send
+                    // Try again
+                    written = client.write((const uint8_t*)(customConfig.c_str() + sent), toSend);
+                }
+
+                sent += written;
 
                 // Log every 5KB
                 if (sent % 5120 < CHUNK_SIZE) {
-                    LOG_INFO(EventSource::NETWORK, "Sent %d/%d bytes (chunk wrote %d bytes)", sent, customConfig.length(), written);
+                    LOG_INFO(EventSource::NETWORK, "Sent %d/%d bytes (last chunk wrote %d bytes)", sent, customConfig.length(), written);
+                }
+
+                // Small delay every few chunks to let TCP stack catch up
+                if (sent % 2048 == 0) {
+                    client.flush();
+                    delay(1);
                 }
             }
             client.flush();
