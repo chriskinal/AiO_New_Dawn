@@ -46,8 +46,9 @@ public:
 
         // Get file size and allocate buffer
         size_t fileSize = file.size();
-        char* buffer = new char[fileSize + 1];
 
+        // Allocate buffer with extra space
+        char* buffer = (char*)malloc(fileSize + 1);
         if (!buffer) {
             file.close();
             return String();
@@ -60,15 +61,24 @@ public:
         // Null terminate
         buffer[bytesRead] = '\0';
 
-        // Create string from buffer
-        String content = buffer;
-        delete[] buffer;
+        // Create string from buffer with explicit copy
+        String content;
+        content.reserve(bytesRead);
+        content = buffer;
+
+        free(buffer);
 
         return content;
     }
 
     // Write custom configuration to flash
     static bool writeCustomConfig(const String& jsonContent) {
+        // Delete existing file first to ensure we don't append
+        if (hasCustomConfig()) {
+            getFS().remove("/can_config.json");
+        }
+
+        // Now open for writing (creates new file)
         File file = getFS().open("/can_config.json", FILE_WRITE);
         if (!file) {
             return false;
