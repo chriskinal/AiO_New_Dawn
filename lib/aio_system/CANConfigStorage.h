@@ -44,21 +44,8 @@ public:
             return String();
         }
 
-        size_t fileSize = file.size();
-        String content;
-        content.reserve(fileSize);
-
-        // Read in 512-byte chunks to avoid String corruption
-        const size_t CHUNK_SIZE = 512;
-        char buffer[CHUNK_SIZE + 1];  // +1 for null terminator
-
-        while (file.available()) {
-            size_t bytesToRead = min((size_t)file.available(), CHUNK_SIZE);
-            size_t bytesRead = file.read((uint8_t*)buffer, bytesToRead);
-            buffer[bytesRead] = '\0';  // Null terminate
-            content += buffer;
-        }
-
+        // Use readString() method which handles the entire file at once
+        String content = file.readString();
         file.close();
 
         return content;
