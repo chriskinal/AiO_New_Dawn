@@ -44,29 +44,9 @@ public:
             return String();
         }
 
-        // Get file size and allocate buffer
-        size_t fileSize = file.size();
-
-        // Allocate buffer with extra space
-        char* buffer = (char*)malloc(fileSize + 1);
-        if (!buffer) {
-            file.close();
-            return String();
-        }
-
-        // Binary read into buffer
-        size_t bytesRead = file.read((uint8_t*)buffer, fileSize);
+        // Use the file's readString() method - simplest approach
+        String content = file.readString();
         file.close();
-
-        // Null terminate
-        buffer[bytesRead] = '\0';
-
-        // Create string from buffer with explicit copy
-        String content;
-        content.reserve(bytesRead);
-        content = buffer;
-
-        free(buffer);
 
         return content;
     }
