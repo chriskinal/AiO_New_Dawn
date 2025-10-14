@@ -72,6 +72,14 @@
 
   "brands": [
     {
+      "id": 0,
+      "name": "DISABLED",
+      "displayName": "Disabled",
+      "description": "CAN bus disabled",
+      "capabilities": {},
+      "uiNotes": "CAN bus functions are disabled."
+    },
+    {
       "id": 1,
       "name": "CASEIH_NH",
       "displayName": "Case IH/New Holland",
@@ -168,6 +176,20 @@
           ]
         }
       ]
+    },
+    {
+      "id": 6,
+      "name": "GENERIC",
+      "displayName": "Generic",
+      "description": "Generic/mixed configuration for custom setups",
+      "capabilities": {
+        "V_Bus": ["steering"],
+        "K_Bus": ["buttons", "hitch"],
+        "ISO_Bus": ["steering", "implement"],
+        "None": ["keya"]
+      },
+      "allowsKeya": true,
+      "uiNotes": "Use when mixing functions from different brands or using Keya steering"
     }
   ]
 }

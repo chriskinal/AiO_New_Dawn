@@ -100,6 +100,20 @@ Each configuration file contains:
 }
 ```
 
+### Required Brands
+
+**IMPORTANT**: Every configuration file must include these two brands:
+
+1. **DISABLED (id: 0)** - Must be first in the brands array
+   - Allows users to disable CAN bus functionality
+   - Has empty capabilities object
+
+2. **GENERIC (id: 6)** - Should be last in the brands array
+   - Provides fallback for mixed/custom configurations
+   - Supports all bus types and functions including Keya steering
+
+All brand-specific configuration files in this directory include both DISABLED and GENERIC brands alongside their specific brand configurations.
+
 ## Firmware Default
 
 The firmware ships with the **Generic_Default.json** configuration, which includes:

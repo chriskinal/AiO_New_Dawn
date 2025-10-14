@@ -32,6 +32,13 @@ const char CAN_CONFIG_UPLOAD_PAGE[] PROGMEM = R"rawliteral(
         .info-box p {
             margin: 5px 0;
             line-height: 1.5;
+            color: #1565c0;
+            font-weight: 500;
+        }
+
+        .info-box strong {
+            color: #0d47a1;
+            font-weight: 600;
         }
 
         .warning-box {
@@ -57,6 +64,13 @@ const char CAN_CONFIG_UPLOAD_PAGE[] PROGMEM = R"rawliteral(
             font-family: monospace;
             word-break: break-all;
             display: none;
+            color: #1b5e20;
+            font-weight: 500;
+        }
+
+        .file-info strong {
+            color: #2e7d32;
+            font-weight: 600;
         }
 
         #feedback {
@@ -69,6 +83,8 @@ const char CAN_CONFIG_UPLOAD_PAGE[] PROGMEM = R"rawliteral(
             white-space: pre-wrap;
             font-size: 14px;
             border: 2px solid #bdc3c7;
+            color: #37474f;
+            font-weight: 500;
         }
 
         .upload-button {
