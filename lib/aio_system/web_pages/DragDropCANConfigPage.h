@@ -1105,13 +1105,6 @@ const char DRAG_DROP_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
             const busName = busNameLabels[busNameValue];
 
             // Check if function is allowed for this bus type
-            if (busName === 'None') {
-                return {
-                    allowed: false,
-                    reason: `Please select a bus type before assigning functions`
-                };
-            }
-
             const allowedFunctions = brand.busTypes[busName] || [];
             if (!allowedFunctions.includes(funcKey)) {
                 return {
