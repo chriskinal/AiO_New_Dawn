@@ -1,13 +1,4 @@
-// CANInfoJSON.h
-// CAN configuration data in JSON format stored in PROGMEM
-// Minimal Generic-only default - users upload brand-specific configs via web interface
-
-#ifndef CAN_INFO_JSON_H
-#define CAN_INFO_JSON_H
-
-#include <Arduino.h>
-
-const char CAN_INFO_JSON[] PROGMEM = R"JSON({
+{
   "version": "2.0",
   "metadata": {
     "description": "CAN bus configuration for AiO New Dawn - Unified format for UI and implementation",
@@ -81,28 +72,63 @@ const char CAN_INFO_JSON[] PROGMEM = R"JSON({
 
   "brands": [
     {
-      "id": 0,
-      "name": "DISABLED",
-      "displayName": "Disabled",
-      "description": "CAN bus disabled",
-      "capabilities": {},
-      "uiNotes": "CAN bus functions are disabled."
-    },
-    {
-      "id": 6,
-      "name": "GENERIC",
-      "displayName": "Generic",
-      "description": "Generic/mixed configuration for custom setups",
+      "id": 2,
+      "name": "CAT_MT",
+      "displayName": "CAT MT Series",
+      "description": "Caterpillar MT series tractors",
       "capabilities": {
         "V_Bus": ["steering"],
-        "K_Bus": ["buttons", "hitch"],
-        "ISO_Bus": ["steering", "implement"],
-        "None": ["keya"]
+        "K_Bus": ["buttons"],
+        "ISO_Bus": []
       },
-      "allowsKeya": true,
-      "uiNotes": "Use when mixing functions from different brands or using Keya steering"
+      "uiNotes": null,
+
+      "models": [
+        {
+          "model": "Late",
+          "vClaim": "1C",
+          "notes": "Later CAT MT models",
+          "canConfig": {
+            "VFilter": "0x18EF1CF0",
+            "VSendCurve": "0x1CEFF01C",
+            "SendCurve": "240,31,0,0,255,255,255,255",
+            "SendCurveLoHi": "1,0",
+            "ITS1": "2,253",
+            "ITS0": "2,252"
+          },
+          "steer": [
+            {
+              "buttonLabel": "MT-series Engage button",
+              "bus": "K_Bus",
+              "canFilterID": "0x18EF1CF0",
+              "byte": 0,
+              "onStateAND": 15
+            }
+          ]
+        },
+        {
+          "model": "Early",
+          "vClaim": "2C",
+          "notes": "Earlier CAT MT models",
+          "canConfig": {
+            "VFilter": "0x0CEFFF76",
+            "VSendCurve": "0x0CEF762C",
+            "SendCurve": "240,31,0,0,255,255,255,255",
+            "SendCurveLoHi": "1,0",
+            "ITS1": "4,253",
+            "ITS0": "4,252"
+          },
+          "steer": [
+            {
+              "buttonLabel": "MT-series Engage button",
+              "bus": "K_Bus",
+              "canFilterID": "0x18EF1CF0",
+              "byte": 0,
+              "onStateAND": 15
+            }
+          ]
+        }
+      ]
     }
   ]
-})JSON";
-
-#endif // CAN_INFO_JSON_H
+}

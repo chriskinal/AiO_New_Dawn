@@ -1,13 +1,4 @@
-// CANInfoJSON.h
-// CAN configuration data in JSON format stored in PROGMEM
-// Minimal Generic-only default - users upload brand-specific configs via web interface
-
-#ifndef CAN_INFO_JSON_H
-#define CAN_INFO_JSON_H
-
-#include <Arduino.h>
-
-const char CAN_INFO_JSON[] PROGMEM = R"JSON({
+{
   "version": "2.0",
   "metadata": {
     "description": "CAN bus configuration for AiO New Dawn - Unified format for UI and implementation",
@@ -103,6 +94,4 @@ const char CAN_INFO_JSON[] PROGMEM = R"JSON({
       "uiNotes": "Use when mixing functions from different brands or using Keya steering"
     }
   ]
-})JSON";
-
-#endif // CAN_INFO_JSON_H
+}
