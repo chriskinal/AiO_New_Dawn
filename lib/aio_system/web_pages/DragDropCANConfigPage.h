@@ -879,19 +879,13 @@ const char DRAG_DROP_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
                 return;
             }
 
-            // Collect all available functions for this brand
+            // Collect all available functions for this brand across ALL bus types
             const availableFunctions = new Set();
 
-            // Check each bus to see what functions are available
-            for (let busNum = 1; busNum <= 3; busNum++) {
-                const busNameValue = parseInt(document.getElementById(`can${busNum}Name`).value);
-                const busName = busNameLabels[busNameValue];
-
-                if (busName !== 'None') {
-                    const busTypeFunctions = brand.busTypes[busName] || [];
-                    busTypeFunctions.forEach(func => availableFunctions.add(func));
-                }
-            }
+            // Add all functions from all bus types defined for this brand
+            Object.values(brand.busTypes).forEach(busTypeFunctions => {
+                busTypeFunctions.forEach(func => availableFunctions.add(func));
+            });
 
             // Create cards for available functions
             availableFunctions.forEach(funcKey => {
