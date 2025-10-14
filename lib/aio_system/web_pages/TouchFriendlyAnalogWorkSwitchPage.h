@@ -106,6 +106,7 @@ const char TOUCH_FRIENDLY_ANALOG_WORK_SWITCH_PAGE[] PROGMEM = R"rawliteral(
         .toggle-label {
             font-size: 18px;
             font-weight: 500;
+            color: #2c3e50;
         }
         
         .setpoint-row {

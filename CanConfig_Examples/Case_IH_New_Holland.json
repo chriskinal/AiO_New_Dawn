@@ -1,0 +1,195 @@
+{
+  "version": "2.0",
+  "metadata": {
+    "description": "CAN bus configuration for AiO New Dawn - Unified format for UI and implementation",
+    "lastUpdated": "2025-01-12",
+    "schema": "Supports drag-and-drop UI configuration and detailed CAN protocol implementation"
+  },
+
+  "functions": {
+    "steering": {
+      "name": "Steering",
+      "color": "#3498db",
+      "description": "Valve/Motor steering control",
+      "exclusive": true,
+      "bitValue": 1
+    },
+    "buttons": {
+      "name": "Buttons",
+      "color": "#2ecc71",
+      "description": "Control button inputs",
+      "exclusive": false,
+      "bitValue": 2
+    },
+    "hitch": {
+      "name": "Hitch",
+      "color": "#e74c3c",
+      "description": "3-point hitch control",
+      "exclusive": false,
+      "bitValue": 4
+    },
+    "implement": {
+      "name": "Implement",
+      "color": "#f39c12",
+      "description": "ISO implement control",
+      "exclusive": false,
+      "bitValue": 8
+    },
+    "keya": {
+      "name": "Keya Motor",
+      "color": "#9b59b6",
+      "description": "Keya CAN motor control",
+      "exclusive": true,
+      "bitValue": 16
+    }
+  },
+
+  "busTypes": {
+    "None": {
+      "id": 0,
+      "displayName": "None",
+      "description": "Bus not configured"
+    },
+    "V_Bus": {
+      "id": 1,
+      "displayName": "V_Bus",
+      "description": "Valve bus for steering",
+      "defaultSpeed": 250
+    },
+    "K_Bus": {
+      "id": 2,
+      "displayName": "K_Bus",
+      "description": "Tractor control bus",
+      "defaultSpeed": 500
+    },
+    "ISO_Bus": {
+      "id": 3,
+      "displayName": "ISO_Bus",
+      "description": "ISOBUS implement control",
+      "defaultSpeed": 250
+    }
+  },
+
+  "brands": [
+    {
+      "id": 0,
+      "name": "DISABLED",
+      "displayName": "Disabled",
+      "description": "CAN bus disabled",
+      "capabilities": {},
+      "uiNotes": "CAN bus functions are disabled."
+    },
+    {
+      "id": 1,
+      "name": "CASEIH_NH",
+      "displayName": "Case IH/New Holland",
+      "description": "Case IH and New Holland tractors (shared V-Bus protocol)",
+      "capabilities": {
+        "V_Bus": ["steering"],
+        "K_Bus": ["buttons", "hitch"],
+        "ISO_Bus": []
+      },
+      "uiNotes": "V_Bus for steering • K_Bus for engage button and hitch control",
+
+      "canConfig": {
+        "VFilter": "0x0CACAA08,0x18FFBB03",
+        "VSendCurve": "0x0CAD08AA",
+        "SendCurve": "0,0,0,255,255,255,255,255",
+        "SendCurveLoHi": "0,1",
+        "ITS1": "2,253",
+        "ITS0": "2,252"
+      },
+
+      "work": [
+        {
+          "buttonLabel": "Hitch Height",
+          "bus": "K_Bus",
+          "canFilterID": "0x18FE4523",
+          "bits": "9-16",
+          "operation": "Work",
+          "type": "Range"
+        }
+      ],
+
+      "models": [
+        {
+          "model": "Case IH General",
+          "vClaim": "AA",
+          "notes": "There are many different Case models with different CAN messages. Try them in turn to find what works. Typically, you can find this on the plug on rear pillar",
+          "steer": [
+            {
+              "buttonLabel": "Case Puma CVX 160 2015, button behind joystick",
+              "bus": "K_Bus",
+              "canFilterID": "0x18FFB306",
+              "byte": 2,
+              "onStateAND": 1
+            },
+            {
+              "buttonLabel": "Case Puma CVX 160 2015, steer button on armrest",
+              "bus": "K_Bus",
+              "canFilterID": "0x18FFB031",
+              "byte": 2,
+              "onStateAND": 16
+            },
+            {
+              "buttonLabel": "Case Puma CVX 165 2022, steer button on armrest",
+              "bus": "K_Bus",
+              "canFilterID": "0x14FF7706",
+              "byte": 0,
+              "onStateAND": 130
+            },
+            {
+              "buttonLabel": "Case Puma CVX 165 2022, steer button on armrest (alt 1)",
+              "bus": "K_Bus",
+              "canFilterID": "0x14FF7706",
+              "byte": 0,
+              "onStateAND": 178
+            },
+            {
+              "buttonLabel": "Case Puma CVX 165 2022, steer button on armrest (alt 2)",
+              "bus": "K_Bus",
+              "canFilterID": "0x14FF7706",
+              "byte": 2,
+              "onStateAND": 193
+            },
+            {
+              "buttonLabel": "Case Puma CVX 165 2022, steer button on armrest (alt 3)",
+              "bus": "K_Bus",
+              "canFilterID": "0x14FF7706",
+              "byte": 2,
+              "onStateAND": 196
+            }
+          ]
+        },
+        {
+          "model": "New Holland General",
+          "vClaim": "AA",
+          "notes": "Steer engage is typically the button on the joystick.",
+          "steer": [
+            {
+              "buttonLabel": "NH, steer button on joystick",
+              "bus": "K_Bus",
+              "canFilterID": "0x18FF1A03",
+              "byte": 2,
+              "onStateAND": 21
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "GENERIC",
+      "displayName": "Generic",
+      "description": "Generic/mixed configuration for custom setups",
+      "capabilities": {
+        "V_Bus": ["steering"],
+        "K_Bus": ["buttons", "hitch"],
+        "ISO_Bus": ["steering", "implement"],
+        "None": ["keya"]
+      },
+      "allowsKeya": true,
+      "uiNotes": "Use when mixing functions from different brands or using Keya steering"
+    }
+  ]
+}

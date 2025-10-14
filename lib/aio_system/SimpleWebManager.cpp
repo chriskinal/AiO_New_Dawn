@@ -26,7 +26,10 @@
 #include "web_pages/TouchFriendlyDeviceSettingsPage.h"  // Touch-friendly device settings
 #include "web_pages/TouchFriendlyNetworkPage.h"  // Touch-friendly network settings
 #include "web_pages/TouchFriendlyAnalogWorkSwitchPage.h"  // Touch-friendly analog work switch
-#include "web_pages/TouchFriendlyCANConfigPage.h"  // Touch-friendly CAN configuration
+#include "web_pages/DragDropCANConfigPage.h"  // Drag-and-drop CAN configuration
+#include "web_pages/CANInfoJSON.h"  // CAN info JSON data
+#include "web_pages/CANConfigUploadPage.h"  // CAN config upload page
+#include "CANConfigStorage.h"  // LittleFS storage for custom CAN config
 #include <ArduinoJson.h>
 #include <QNEthernet.h>
 #include "ESP32Interface.h"
@@ -52,12 +55,17 @@ SimpleWebManager::~SimpleWebManager() {
 }
 
 bool SimpleWebManager::begin(uint16_t port) {
+    // Initialize LittleFS for custom configuration storage
+    if (!CANConfigStorage::init()) {
+        LOG_WARNING(EventSource::NETWORK, "LittleFS init failed - custom CAN config not available");
+    }
+
     // Load language preference from EEPROM
     uint8_t savedLang = EEPROM.read(WEB_CONFIG_ADDR);
     if (savedLang <= 1) {  // 0 = English, 1 = German
         currentLanguage = static_cast<WebLanguage>(savedLang);
     }
-    
+
     // Setup routes first
     setupRoutes();
     
@@ -161,6 +169,11 @@ void SimpleWebManager::setupRoutes() {
         sendCANConfigPage(client);
     });
 
+    // CAN Config Upload page
+    httpServer.on("/can/upload", [this](EthernetClient& client, const String& method, const String& query) {
+        sendCANConfigUploadPage(client);
+    });
+
     // WAS Demo page removed - using WebSocket telemetry instead
     
     // Language selection
@@ -231,6 +244,34 @@ void SimpleWebManager::setupRoutes() {
     // CAN configuration API
     httpServer.on("/api/can/config", [this](EthernetClient& client, const String& method, const String& query) {
         handleCANConfig(client, method);
+    });
+
+    // CAN info JSON API (brand capabilities, functions, etc.)
+    httpServer.on("/api/can/info", [this](EthernetClient& client, const String& method, const String& query) {
+        handleCANInfo(client);
+    });
+
+    // CAN config upload endpoint
+    httpServer.on("/api/can/config/upload", [this](EthernetClient& client, const String& method, const String& query) {
+        if (method == "POST") {
+            handleCANConfigUpload(client);
+        } else {
+            SimpleHTTPServer::send(client, 405, "text/plain", "Method Not Allowed");
+        }
+    });
+
+    // CAN config restore default endpoint
+    httpServer.on("/api/can/config/restore", [this](EthernetClient& client, const String& method, const String& query) {
+        if (method == "POST") {
+            handleCANConfigRestore(client);
+        } else {
+            SimpleHTTPServer::send(client, 405, "text/plain", "Method Not Allowed");
+        }
+    });
+
+    // CAN config status endpoint
+    httpServer.on("/api/can/config/status", [this](EthernetClient& client, const String& method, const String& query) {
+        handleCANConfigStatus(client);
     });
 
     // OTA upload endpoint
@@ -328,8 +369,13 @@ void SimpleWebManager::sendAnalogWorkSwitchPage(EthernetClient& client) {
 }
 
 void SimpleWebManager::sendCANConfigPage(EthernetClient& client) {
-    extern const char TOUCH_FRIENDLY_CAN_CONFIG_PAGE[];
-    SimpleHTTPServer::sendP(client, 200, "text/html", TOUCH_FRIENDLY_CAN_CONFIG_PAGE);
+    extern const char DRAG_DROP_CAN_CONFIG_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", DRAG_DROP_CAN_CONFIG_PAGE);
+}
+
+void SimpleWebManager::sendCANConfigUploadPage(EthernetClient& client) {
+    extern const char CAN_CONFIG_UPLOAD_PAGE[];
+    SimpleHTTPServer::sendP(client, 200, "text/html", CAN_CONFIG_UPLOAD_PAGE);
 }
 
 // WAS Demo page removed - using WebSocket telemetry instead
@@ -408,27 +454,27 @@ void SimpleWebManager::handleEventLoggerConfig(EthernetClient& client, const Str
         }
         
         // Apply EventLogger settings
-        if (doc.containsKey("serialEnabled")) {
+        if (!doc["serialEnabled"].isNull()) {
             bool enabled = doc["serialEnabled"];
             logger->enableSerial(enabled);
             LOG_INFO(EventSource::NETWORK, "Set serial enabled: %d", enabled);
         }
-        if (doc.containsKey("udpEnabled")) {
+        if (!doc["udpEnabled"].isNull()) {
             bool enabled = doc["udpEnabled"];
             logger->enableUDP(enabled);
             LOG_INFO(EventSource::NETWORK, "Set UDP enabled: %d", enabled);
         }
-        if (doc.containsKey("serialLevel")) {
+        if (!doc["serialLevel"].isNull()) {
             int level = doc["serialLevel"];
             logger->setSerialLevel(static_cast<EventSeverity>(level));
             LOG_INFO(EventSource::NETWORK, "Set serial level: %d", level);
         }
-        if (doc.containsKey("udpLevel")) {
+        if (!doc["udpLevel"].isNull()) {
             int level = doc["udpLevel"];
             logger->setUDPLevel(static_cast<EventSeverity>(level));
             LOG_INFO(EventSource::NETWORK, "Set UDP level: %d", level);
         }
-        if (doc.containsKey("rateLimitDisabled")) {
+        if (!doc["rateLimitDisabled"].isNull()) {
             bool disabled = doc["rateLimitDisabled"];
             logger->setRateLimitEnabled(!disabled);
             LOG_INFO(EventSource::NETWORK, "Set rate limit disabled: %d", disabled);
@@ -710,13 +756,13 @@ void SimpleWebManager::handleAnalogWorkSwitchConfig(EthernetClient& client) {
     }
     
     // Update settings if provided
-    if (doc.containsKey("enabled")) {
+    if (!doc["enabled"].isNull()) {
         adProc->setAnalogWorkSwitchEnabled(doc["enabled"]);
     }
-    if (doc.containsKey("hysteresis")) {
+    if (!doc["hysteresis"].isNull()) {
         adProc->setWorkSwitchHysteresis(doc["hysteresis"]);
     }
-    if (doc.containsKey("invert")) {
+    if (!doc["invert"].isNull()) {
         adProc->setInvertWorkSwitch(doc["invert"]);
     }
     
@@ -897,27 +943,37 @@ void SimpleWebManager::handleOTAUpload(EthernetClient& client) {
 
 String SimpleWebManager::readPostBody(EthernetClient& client) {
     String body;
-    
+    body.reserve(20480); // Pre-allocate for 20KB (handles JSON config files)
+
     // Note: SimpleHTTPServer should have already consumed headers
     // Just read any remaining data
-    int timeout = 100; // 100ms timeout
+    int timeout = 2000; // 2 second timeout for large files
     unsigned long start = millis();
-    
+    unsigned long lastDataTime = millis();
+
     while (millis() - start < timeout) {
         while (client.available()) {
-            char c = client.read();
-            body += c;
-            start = millis(); // Reset timeout on data
-        }
-        if (body.length() > 0 && !client.available()) {
-            // We have data and no more is immediately available
-            delay(10); // Small delay to see if more data arrives
-            if (!client.available()) {
-                break; // No more data
+            // Read in chunks for better performance
+            char buffer[512];
+            size_t bytesRead = client.readBytes(buffer, sizeof(buffer));
+            if (bytesRead > 0) {
+                // Temporarily null-terminate and append
+                char tempChar = buffer[bytesRead];
+                buffer[bytesRead] = '\0';
+                body += buffer;
+                buffer[bytesRead] = tempChar;
+                lastDataTime = millis(); // Reset timeout on data
             }
         }
+
+        // If we have data and haven't received anything for 50ms, we're done
+        if (body.length() > 0 && (millis() - lastDataTime > 50)) {
+            break;
+        }
+
+        delay(1); // Small delay to yield
     }
-    
+
     return body;
 }
 
@@ -1142,6 +1198,53 @@ void SimpleWebManager::handleUM98xWrite(EthernetClient& client) {
     SimpleHTTPServer::send(client, success ? 200 : 500, "application/json", response);
 }
 
+void SimpleWebManager::handleCANInfo(EthernetClient& client) {
+    // Check if custom configuration exists in LittleFS
+    if (CANConfigStorage::hasCustomConfig()) {
+        // Stream custom configuration directly from flash to save RAM
+        LittleFS_Program& fs = CANConfigStorage::getFS();
+        File file = fs.open("/can_config.json", FILE_READ);
+
+        if (file && file.size() > 0) {
+            // Send HTTP headers
+            client.print("HTTP/1.1 200 OK\r\n");
+            client.print("Content-Type: application/json\r\n");
+            client.print("Connection: close\r\n");
+            client.print("\r\n");
+
+            // Stream file in chunks to avoid loading entire file into RAM
+            uint8_t buffer[512];
+            while (file.available()) {
+                size_t bytesRead = file.read(buffer, sizeof(buffer));
+                if (bytesRead > 0) {
+                    size_t written = client.write(buffer, bytesRead);
+
+                    // If write returned 0, buffer is full - wait for it to drain
+                    if (written == 0) {
+                        client.flush();
+                        delay(10);
+                        written = client.write(buffer, bytesRead);
+                    }
+
+                    // Pace writes to prevent buffer overflow
+                    if (file.position() % 2048 == 0) {
+                        client.flush();
+                        delay(1);
+                    }
+                }
+            }
+            file.close();
+            client.flush();
+            return;
+        }
+
+        if (file) file.close();
+    }
+
+    // Fallback to default configuration from PROGMEM
+    SimpleHTTPServer::sendP(client, 200, "application/json", CAN_INFO_JSON);
+}
+
 void SimpleWebManager::handleCANConfig(EthernetClient& client, const String& method) {
     extern ConfigManager configManager;
 
@@ -1186,38 +1289,53 @@ void SimpleWebManager::handleCANConfig(EthernetClient& client, const String& met
         CANSteerConfig config = configManager.getCANSteerConfig();
 
         // Update config from JSON
-        if (doc.containsKey("brand")) {
+        if (!doc["brand"].isNull()) {
             config.brand = doc["brand"];
         }
-        if (doc.containsKey("can1Speed")) {
+        if (!doc["can1Speed"].isNull()) {
             config.can1Speed = doc["can1Speed"];
         }
-        if (doc.containsKey("can1Function")) {
+        if (!doc["can1Function"].isNull()) {
             config.can1Function = doc["can1Function"];
         }
-        if (doc.containsKey("can1Name")) {
+        if (!doc["can1Name"].isNull()) {
             config.can1Name = doc["can1Name"];
         }
-        if (doc.containsKey("can2Speed")) {
+        if (!doc["can2Speed"].isNull()) {
             config.can2Speed = doc["can2Speed"];
         }
-        if (doc.containsKey("can2Function")) {
+        if (!doc["can2Function"].isNull()) {
             config.can2Function = doc["can2Function"];
         }
-        if (doc.containsKey("can2Name")) {
+        if (!doc["can2Name"].isNull()) {
             config.can2Name = doc["can2Name"];
         }
-        if (doc.containsKey("can3Speed")) {
+        if (!doc["can3Speed"].isNull()) {
             config.can3Speed = doc["can3Speed"];
         }
-        if (doc.containsKey("can3Function")) {
+        if (!doc["can3Function"].isNull()) {
             config.can3Function = doc["can3Function"];
         }
-        if (doc.containsKey("can3Name")) {
+        if (!doc["can3Name"].isNull()) {
             config.can3Name = doc["can3Name"];
         }
-        if (doc.containsKey("moduleID")) {
+        if (!doc["moduleID"].isNull()) {
             config.moduleID = doc["moduleID"];
+        }
+
+        // Validate: ensure no duplicate bus names (except None/0)
+        uint8_t busNames[3] = {config.can1Name, config.can2Name, config.can3Name};
+        for (int i = 0; i < 3; i++) {
+            if (busNames[i] != 0) {  // Skip "None"
+                for (int j = i + 1; j < 3; j++) {
+                    if (busNames[i] == busNames[j]) {
+                        LOG_ERROR(EventSource::NETWORK, "Duplicate bus name detected: CAN%d and CAN%d both set to %d",
+                                  i+1, j+1, busNames[i]);
+                        SimpleHTTPServer::sendJSON(client, "{\"status\":\"error\",\"message\":\"Each bus name can only be used once\"}");
+                        return;
+                    }
+                }
+            }
         }
 
         // Save to EEPROM
@@ -1233,4 +1351,79 @@ void SimpleWebManager::handleCANConfig(EthernetClient& client, const String& met
     } else {
         SimpleHTTPServer::send(client, 405, "text/plain", "Method Not Allowed");
     }
+}
+
+void SimpleWebManager::handleCANConfigUpload(EthernetClient& client) {
+    // Read JSON content from POST body
+    String jsonContent = readPostBody(client);
+
+    LOG_INFO(EventSource::NETWORK, "CAN config upload - received %d bytes", jsonContent.length());
+
+    if (jsonContent.length() == 0) {
+        SimpleHTTPServer::send(client, 400, "text/plain", "No content received");
+        return;
+    }
+
+    // Validate JSON by parsing it - use DynamicJsonDocument for large files
+    DynamicJsonDocument testDoc(24576);  // 24KB buffer for validation
+    DeserializationError error = deserializeJson(testDoc, jsonContent);
+
+    if (error) {
+        String errorMsg = "Invalid JSON: ";
+        errorMsg += error.c_str();
+        SimpleHTTPServer::send(client, 400, "text/plain", errorMsg);
+        LOG_ERROR(EventSource::NETWORK, "CAN config upload - invalid JSON: %s", error.c_str());
+        return;
+    }
+
+    // Write to LittleFS
+    if (CANConfigStorage::writeCustomConfig(jsonContent)) {
+        LOG_INFO(EventSource::NETWORK, "Custom CAN config uploaded (%d bytes)", jsonContent.length());
+        SimpleHTTPServer::send(client, 200, "text/plain", "Upload successful");
+    } else {
+        LOG_ERROR(EventSource::NETWORK, "Failed to write custom CAN config to flash");
+        SimpleHTTPServer::send(client, 500, "text/plain", "Failed to write to flash");
+    }
+}
+
+void SimpleWebManager::handleCANConfigRestore(EthernetClient& client) {
+    // Delete custom configuration to restore default
+    if (CANConfigStorage::deleteCustomConfig()) {
+        LOG_INFO(EventSource::NETWORK, "Custom CAN config deleted, restored to default");
+        SimpleHTTPServer::send(client, 200, "text/plain", "Default configuration restored");
+    } else {
+        LOG_ERROR(EventSource::NETWORK, "Failed to delete custom CAN config");
+        SimpleHTTPServer::send(client, 500, "text/plain", "Failed to restore default");
+    }
+}
+
+void SimpleWebManager::handleCANConfigStatus(EthernetClient& client) {
+    StaticJsonDocument<256> doc;
+
+    if (CANConfigStorage::hasCustomConfig()) {
+        doc["custom"] = true;
+
+        // Try to get version from custom config
+        String customConfig = CANConfigStorage::readCustomConfig();
+        if (customConfig.length() > 0) {
+            StaticJsonDocument<512> configDoc;
+            DeserializationError error = deserializeJson(configDoc, customConfig);
+            if (!error && !configDoc["version"].isNull()) {
+                doc["version"] = configDoc["version"].as<String>();
+            } else {
+                doc["version"] = "Unknown";
+            }
+            doc["size"] = CANConfigStorage::getCustomConfigSize();
+        } else {
+            doc["version"] = "Error reading";
+            doc["size"] = 0;
+        }
+    } else {
+        doc["custom"] = false;
+        doc["version"] = "2.0";  // Default version from PROGMEM
+    }
+
+    String json;
+    serializeJson(doc, json);
+    SimpleHTTPServer::sendJSON(client, json);
 }

@@ -1,0 +1,172 @@
+{
+  "version": "2.0",
+  "metadata": {
+    "description": "CAN bus configuration for AiO New Dawn - Unified format for UI and implementation",
+    "lastUpdated": "2025-01-12",
+    "schema": "Supports drag-and-drop UI configuration and detailed CAN protocol implementation"
+  },
+
+  "functions": {
+    "steering": {
+      "name": "Steering",
+      "color": "#3498db",
+      "description": "Valve/Motor steering control",
+      "exclusive": true,
+      "bitValue": 1
+    },
+    "buttons": {
+      "name": "Buttons",
+      "color": "#2ecc71",
+      "description": "Control button inputs",
+      "exclusive": false,
+      "bitValue": 2
+    },
+    "hitch": {
+      "name": "Hitch",
+      "color": "#e74c3c",
+      "description": "3-point hitch control",
+      "exclusive": false,
+      "bitValue": 4
+    },
+    "implement": {
+      "name": "Implement",
+      "color": "#f39c12",
+      "description": "ISO implement control",
+      "exclusive": false,
+      "bitValue": 8
+    },
+    "keya": {
+      "name": "Keya Motor",
+      "color": "#9b59b6",
+      "description": "Keya CAN motor control",
+      "exclusive": true,
+      "bitValue": 16
+    }
+  },
+
+  "busTypes": {
+    "None": {
+      "id": 0,
+      "displayName": "None",
+      "description": "Bus not configured"
+    },
+    "V_Bus": {
+      "id": 1,
+      "displayName": "V_Bus",
+      "description": "Valve bus for steering",
+      "defaultSpeed": 250
+    },
+    "K_Bus": {
+      "id": 2,
+      "displayName": "K_Bus",
+      "description": "Tractor control bus",
+      "defaultSpeed": 500
+    },
+    "ISO_Bus": {
+      "id": 3,
+      "displayName": "ISO_Bus",
+      "description": "ISOBUS implement control",
+      "defaultSpeed": 250
+    }
+  },
+
+  "brands": [
+    {
+      "id": 0,
+      "name": "DISABLED",
+      "displayName": "Disabled",
+      "description": "CAN bus disabled",
+      "capabilities": {},
+      "uiNotes": "CAN bus functions are disabled."
+    },
+    {
+      "id": 4,
+      "name": "FENDT",
+      "displayName": "Fendt SCR/S4/Gen6",
+      "description": "Fendt SCR, S4, and Gen6 series tractors",
+      "capabilities": {
+        "V_Bus": ["steering"],
+        "K_Bus": ["buttons", "hitch"],
+        "ISO_Bus": []
+      },
+      "uiNotes": "K_Bus typically handles buttons and hitch • V_Bus for steering",
+
+      "canConfig": {
+        "VFilter": "0x0CEF2CF0",
+        "curveMod": -32128,
+        "VSendCurve": "0x0CEFF02C",
+        "VDataLen": 6,
+        "SendCurveSteer": "5,9,3,10,0,0",
+        "SendCurveNoSteer": "5,9,2,10,0,0",
+        "CurveSteerLoHi": "4,5",
+        "ITS1": "2,253",
+        "ITS0": "2,252"
+      },
+
+      "models": [
+        {
+          "model": "S4",
+          "vClaim": "2C",
+          "notes": "Steer engage is the white button on the armrest",
+          "steer": [
+            {
+              "buttonLabel": "Fendt armrest button",
+              "bus": "K_Bus",
+              "canFilterID": "0x613",
+              "byte": 1,
+              "onStateAND": 4
+            }
+          ],
+          "work": [
+            {
+              "inWork": {
+                "bus": "K_Bus",
+                "label": "Big-Go",
+                "canFilterID": "0x14204146",
+                "send": "0x15,0x20,0x06,0xCA,0x80,0x01,0x00,0x00",
+                "operation": "Work"
+              },
+              "outWork": {
+                "bus": "K_Bus",
+                "label": "Big-End",
+                "canFilterID": "0x14204146",
+                "send": "0x15,0x21,0x06,0xCA,0x80,0x03,0x00,0x00",
+                "operation": "OutWork"
+              }
+            },
+            {
+              "inWork": {
+                "bus": "K_Bus",
+                "label": "Small-Go",
+                "canFilterID": "0x14204146",
+                "send": "0x15,0x20,0x06,0xCA,0x80,0x01,0x00,0x00",
+                "operation": "Work"
+              },
+              "outWork": {
+                "bus": "K_Bus",
+                "label": "Small-End",
+                "canFilterID": "0x14204146",
+                "send": "0x15,0x21,0x06,0xCA,0x80,0x03,0x00,0x00",
+                "operation": "OutWork"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "GENERIC",
+      "displayName": "Generic",
+      "description": "Generic/mixed configuration for custom setups",
+      "capabilities": {
+        "V_Bus": ["steering"],
+        "K_Bus": ["buttons", "hitch"],
+        "ISO_Bus": ["steering", "implement"],
+        "None": ["keya"]
+      },
+      "allowsKeya": true,
+      "uiNotes": "Use when mixing functions from different brands or using Keya steering"
+    }
+  ]
+}

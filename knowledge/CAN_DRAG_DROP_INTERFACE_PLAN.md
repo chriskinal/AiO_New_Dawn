@@ -77,174 +77,199 @@ This document outlines the design and implementation plan for a modern, touch-fr
 
 ## Data Structures
 
-### Brand Capabilities Mapping
+### Configuration Data Source
+
+**All brand capabilities, function definitions, and bus types are loaded from an external JSON file:**
+
+- **File Location**: `/api/can/info` (served from CANInfo.json)
+- **Format**: CANInfo v2.0 JSON format (see CANInfo_v2.json)
+- **Benefits**:
+  - Easy to update without recompiling firmware
+  - Users can add new brands by editing JSON
+  - Centralized configuration for UI and backend
+  - Supports future expansion (new functions, brands, etc.)
+
+### JSON Structure Overview
+
 ```javascript
-const BrandCapabilities = {
-    0: { // Disabled
-        name: 'Disabled',
-        functions: {}
-    },
-    1: { // Case IH/NH
-        name: 'Case IH/New Holland',
-        functions: {
-            'V_Bus': ['steering'],
-            'K_Bus': ['buttons', 'hitch'],
-            'ISO_Bus': []
-        }
-    },
-    2: { // CAT MT
-        name: 'CAT MT Series',
-        functions: {
-            'V_Bus': ['steering'],
-            'K_Bus': ['buttons'],
-            'ISO_Bus': []
-        }
-    },
-    3: { // Claas
-        name: 'Claas',
-        functions: {
-            'V_Bus': ['steering'],
-            'K_Bus': ['buttons'],
-            'ISO_Bus': []
-        }
-    },
-    4: { // Fendt SCR/S4/Gen6
-        name: 'Fendt SCR/S4/Gen6',
-        functions: {
-            'V_Bus': ['steering'],
-            'K_Bus': ['buttons', 'hitch'],
-            'ISO_Bus': []
-        }
-    },
-    5: { // Fendt One
-        name: 'Fendt One',
-        functions: {
-            'V_Bus': ['steering'],
-            'K_Bus': ['buttons', 'hitch'],
-            'ISO_Bus': ['steering', 'implement']
-        }
-    },
-    6: { // Generic
-        name: 'Generic',
-        functions: {
-            'V_Bus': ['steering'],
-            'K_Bus': ['buttons', 'hitch'],
-            'ISO_Bus': ['steering', 'implement'],
-            'None': ['keya']  // Special case for Keya motor
-        }
-    },
-    7: { // JCB
-        name: 'JCB',
-        functions: {
-            'V_Bus': ['steering'],
-            'K_Bus': [],
-            'ISO_Bus': []
-        }
-    },
-    8: { // Lindner
-        name: 'Lindner',
-        functions: {
-            'V_Bus': ['steering'],
-            'K_Bus': [],
-            'ISO_Bus': []
-        }
-    },
-    9: { // Valtra/Massey Ferguson
-        name: 'Valtra/Massey Ferguson',
-        functions: {
-            'V_Bus': ['steering'],
-            'K_Bus': ['buttons', 'hitch'],
-            'ISO_Bus': []
-        }
+{
+  "version": "2.0",
+  "functions": {
+    "steering": { name, icon, color, description, exclusive, bitValue },
+    "buttons": { ... },
+    "hitch": { ... },
+    "implement": { ... },
+    "keya": { ... }
+  },
+  "busTypes": {
+    "None": { id: 0, displayName: "None" },
+    "Keya": { id: 1, displayName: "Keya" },
+    "V_Bus": { id: 2, displayName: "V_Bus", defaultSpeed: 250 },
+    "K_Bus": { id: 3, displayName: "K_Bus", defaultSpeed: 500 },
+    "ISO_Bus": { id: 4, displayName: "ISO_Bus", defaultSpeed: 250 }
+  },
+  "brands": [
+    {
+      id: 0-9,
+      name: "ENUM_NAME",
+      displayName: "User-Friendly Name",
+      capabilities: {
+        "V_Bus": ["steering"],
+        "K_Bus": ["buttons", "hitch"],
+        ...
+      },
+      uiNotes: "Optional guidance text",
+      canConfig: { /* CAN protocol details */ },
+      models: [ /* Model-specific configurations */ ]
     }
-};
+  ]
+}
 ```
 
-### Function Definitions
+### Loading Configuration at Runtime
+
 ```javascript
-const FunctionDefinitions = {
-    'steering': {
-        name: 'Steering',
-        icon: '🚗',
-        color: '#3498db',
-        description: 'Valve/Motor steering control',
-        exclusive: true,  // Only one instance allowed across all buses
-        bitValue: 0x01
-    },
-    'buttons': {
-        name: 'Buttons',
-        icon: '🔘',
-        color: '#2ecc71',
-        description: 'Control button inputs',
-        exclusive: false,
-        bitValue: 0x02
-    },
-    'hitch': {
-        name: 'Hitch',
-        icon: '🚜',
-        color: '#e74c3c',
-        description: '3-point hitch control',
-        exclusive: false,
-        bitValue: 0x04
-    },
-    'implement': {
-        name: 'Implement',
-        icon: '🌾',
-        color: '#f39c12',
-        description: 'ISO implement control',
-        exclusive: false,
-        bitValue: 0x08
-    },
-    'keya': {
-        name: 'Keya Motor',
-        icon: '⚙️',
-        color: '#9b59b6',
-        description: 'Keya CAN motor control',
-        exclusive: true,  // Only one instance allowed
-        bitValue: 0x10
-    }
-};
+// Load configuration on page load
+let config = null;
+
+async function loadCANConfiguration() {
+  try {
+    const response = await fetch('/api/can/info');
+    config = await response.json();
+
+    // Extract what we need for the UI
+    const functions = config.functions;
+    const busTypes = config.busTypes;
+    const brands = config.brands;
+
+    // Initialize UI with loaded data
+    initializeBrandSelector(brands);
+    initializeFunctionPool(functions);
+
+  } catch (error) {
+    console.error('Failed to load CAN configuration:', error);
+    showNotification('Failed to load configuration data', 'error');
+  }
+}
+```
+
+### Example: Accessing Brand Data
+
+```javascript
+// After loading config from /api/can/info
+const brand = config.brands.find(b => b.id === 1); // Case IH/NH
+
+console.log(brand.displayName);  // "Case IH/New Holland"
+console.log(brand.capabilities);
+// {
+//   "V_Bus": ["steering"],
+//   "K_Bus": ["buttons", "hitch"],
+//   "ISO_Bus": []
+// }
+
+console.log(brand.uiNotes);
+// "V_Bus for steering • K_Bus for engage button and hitch control"
+```
+
+### Example: Accessing Function Data
+
+```javascript
+// Functions loaded from config.functions
+const steeringFunc = config.functions.steering;
+
+console.log(steeringFunc);
+// {
+//   name: "Steering",
+//   icon: "🚗",
+//   color: "#3498db",
+//   description: "Valve/Motor steering control",
+//   exclusive: true,
+//   bitValue: 1
+// }
+
+// Use in UI to create function cards
+Object.entries(config.functions).forEach(([key, func]) => {
+  createFunctionCard(key, func);
+});
+```
+
+### Example: Accessing Bus Type Data
+
+```javascript
+// Bus types loaded from config.busTypes
+const vBus = config.busTypes.V_Bus;
+
+console.log(vBus);
+// {
+//   id: 2,
+//   displayName: "V_Bus",
+//   description: "Valve bus for steering",
+//   defaultSpeed: 250
+// }
 ```
 
 ## Implementation Architecture
 
-### Core Class Structure
+### Core Application State
 ```javascript
-class CANBusConfigurator {
-    constructor() {
-        this.selectedBrand = 6; // Default to Generic
-        this.busAssignments = {
-            can1: [],
-            can2: [],
-            can3: []
-        };
-        this.busNames = {
-            can1: 'V_Bus',
-            can2: 'K_Bus',
-            can3: 'ISO_Bus'
-        };
-        this.draggedElement = null;
-        this.touchOffset = { x: 0, y: 0 };
-    }
+// Global configuration loaded from JSON
+let canConfig = null;
 
-    // Core methods
-    init() { }
-    createBrandSelector() { }
-    onBrandChange(brandId) { }
-    updateFunctionPool() { }
-    createFunctionCard(funcId, func) { }
-    validateCurrentAssignments() { }
-    canDropFunction(funcId, busId) { }
-    assignFunction(funcId, busId) { }
-    removeFunction(funcId, busId) { }
-    setupDragAndDrop() { }
-    setupTouchEvents() { }
-    saveConfiguration() { }
-    loadCurrentConfig() { }
-    showNotification(message, type) { }
-    bitfieldToFunctions(bitfield) { }
-    functionsToBitfield(functions) { }
-}
+// Application state
+const state = {
+    selectedBrand: 6, // Default to Generic
+    busAssignments: {
+        1: [],  // CAN1 assigned functions
+        2: [],  // CAN2 assigned functions
+        3: []   // CAN3 assigned functions
+    },
+    draggedElement: null,
+    draggedFunction: null,
+    touchOffset: { x: 0, y: 0 }
+};
+```
+
+### Core Methods Structure
+```javascript
+// Initialization
+async function loadCANConfiguration() { /* Load from /api/can/info */ }
+function initializeBrandSelector(brands) { /* Populate brand dropdown */ }
+function initializeFunctionPool(functions) { /* Create function cards */ }
+
+// Brand and function management
+function onBrandChange() { /* Update UI when brand changes */ }
+function updateFunctionPool() { /* Refresh available functions */ }
+function createFunctionCard(funcKey, func) { /* Create draggable card */ }
+
+// Drag and drop
+function setupDragAndDrop() { /* Setup mouse events */ }
+function setupTouchEvents() { /* Setup touch events */ }
+function handleDragStart(e) { }
+function handleDragOver(e) { }
+function handleDrop(e) { }
+function handleTouchStart(e) { }
+function handleTouchMove(e) { }
+function handleTouchEnd(e) { }
+
+// Validation
+function canDropFunction(funcId, busNum) { /* Check if drop is valid */ }
+function validateBrandCapabilities(funcId, busNum, busName) { }
+
+// Assignment management
+function assignFunction(funcId, busNum) { /* Add function to bus */ }
+function removeFunction(funcId, busNum) { /* Remove function from bus */ }
+function clearBus(busNum) { /* Clear all functions from bus */ }
+function updateDropZone(busNum) { /* Refresh drop zone display */ }
+
+// Configuration persistence
+async function loadConfiguration() { /* Load from /api/can/config */ }
+async function saveConfiguration() { /* Save to /api/can/config */ }
+function bitfieldToFunctions(bitfield) { /* Convert backend format */ }
+function functionsToBitfield(functions) { /* Convert to backend format */ }
+
+// UI feedback
+function showNotification(message, type) { /* Toast notification */ }
+function updateInfoBox() { /* Update brand-specific info */ }
 ```
 
 ## Drag & Drop Implementation
@@ -338,24 +363,37 @@ document.addEventListener('touchend', (e) => {
 
 ### Validation Implementation
 ```javascript
-canDropFunction(funcId, busId) {
-    const brand = BrandCapabilities[this.selectedBrand];
-    const busName = this.busNames[busId];
-    const allowedFunctions = brand.functions[busName] || [];
+function canDropFunction(funcKey, busNum) {
+    // Get brand from loaded JSON config
+    const brand = canConfig.brands.find(b => b.id === state.selectedBrand);
+    if (!brand) {
+        return { allowed: false, reason: 'Invalid brand selected' };
+    }
+
+    // Get bus name from dropdown
+    const busNameValue = parseInt(document.getElementById(`can${busNum}Name`).value);
+    const busName = Object.keys(canConfig.busTypes).find(
+        key => canConfig.busTypes[key].id === busNameValue
+    );
+
+    // Get allowed functions for this bus from brand capabilities
+    const allowedFunctions = brand.capabilities[busName] || [];
 
     // Check brand allows this function on this bus
-    if (!allowedFunctions.includes(funcId)) {
+    if (!allowedFunctions.includes(funcKey)) {
+        const func = canConfig.functions[funcKey];
         return {
             allowed: false,
-            reason: `${FunctionDefinitions[funcId].name} not supported on ${busName} for ${brand.name}`
+            reason: `${func.name} not supported on ${busName} for ${brand.displayName}`
         };
     }
 
-    // Check exclusive functions
-    const func = FunctionDefinitions[funcId];
+    // Check exclusive functions (from JSON config)
+    const func = canConfig.functions[funcKey];
     if (func.exclusive) {
-        for (const [otherBusId, functions] of Object.entries(this.busAssignments)) {
-            if (functions.includes(funcId)) {
+        // Check if already assigned to a different bus
+        for (const [otherBusNum, functions] of Object.entries(state.busAssignments)) {
+            if (parseInt(otherBusNum) !== busNum && functions.includes(funcKey)) {
                 return {
                     allowed: false,
                     reason: `${func.name} can only be assigned to one bus`
@@ -485,6 +523,18 @@ canDropFunction(funcId, busId) {
 
 ### Data Format Conversion
 ```javascript
+// Convert bus name string to enum value
+busNameToEnum(busName) {
+    const mapping = {
+        'None': 0,
+        'Keya': 1,
+        'V_Bus': 2,
+        'K_Bus': 3,
+        'ISO_Bus': 4
+    };
+    return mapping[busName] || 0;
+}
+
 // Convert UI state to backend bitfield format
 saveConfiguration() {
     const config = {
@@ -492,9 +542,9 @@ saveConfiguration() {
         can1Speed: 0, // 0=250kbps, 1=500kbps
         can2Speed: 1,
         can3Speed: 0,
-        can1Name: this.busNameToId('V_Bus'),    // Convert to enum
-        can2Name: this.busNameToId('K_Bus'),
-        can3Name: this.busNameToId('ISO_Bus'),
+        can1Name: this.busNameToEnum(this.busNames.can1),
+        can2Name: this.busNameToEnum(this.busNames.can2),
+        can3Name: this.busNameToEnum(this.busNames.can3),
         can1Function: this.functionsToBitfield(this.busAssignments.can1),
         can2Function: this.functionsToBitfield(this.busAssignments.can2),
         can3Function: this.functionsToBitfield(this.busAssignments.can3)
@@ -519,12 +569,28 @@ bitfieldToFunctions(bitfield) {
 }
 
 // Convert function array to bitfield for backend
-functionsToBitfield(functions) {
+function functionsToBitfield(functions) {
     let bitfield = 0;
-    functions.forEach(func => {
-        bitfield |= FunctionDefinitions[func].bitValue;
+    functions.forEach(funcKey => {
+        // Get bitValue from loaded JSON config
+        const func = canConfig.functions[funcKey];
+        if (func) {
+            bitfield |= func.bitValue;
+        }
     });
     return bitfield;
+}
+
+// Convert bitfield to function array for UI
+function bitfieldToFunctions(bitfield) {
+    const functions = [];
+    // Iterate through all functions in JSON config
+    Object.entries(canConfig.functions).forEach(([key, func]) => {
+        if (bitfield & func.bitValue) {
+            functions.push(key);
+        }
+    });
+    return functions;
 }
 ```
 
@@ -624,32 +690,179 @@ showValidationTooltip(element, message) {
 | Icons/Assets | 2 KB | Unicode emojis |
 | **Total** | **30 KB** | Well within Teensy limits |
 
+## Implementation Notes
+
+### Current Backend Implementation
+- API Endpoint: `/api/can/config` (GET/POST)
+- Brand enum values: 0-9 (DISABLED, CASEIH_NH, CAT_MT, CLAAS, FENDT, FENDT_ONE, GENERIC, JCB, LINDNER, VALTRA_MASSEY)
+- Bus name enum values: 0-4 (NONE, KEYA, V_BUS, K_BUS, ISO_BUS)
+- Function bitfield values: 0x01 (STEERING), 0x02 (BUTTONS), 0x04 (HITCH), 0x08 (IMPLEMENT), 0x10 (KEYA)
+- Bus speeds: 0 = 250kbps, 1 = 500kbps
+
+### Replacing Existing Interface
+This drag-and-drop interface will replace the current checkbox-based interface in `TouchFriendlyCANConfigPage.h`. The new implementation should:
+- Use the same API endpoints
+- Maintain backward compatibility with existing configurations
+- Provide a more intuitive visual interface
+- Support the same brand/function/bus relationships
+
 ## Implementation Timeline
 
-### Phase 1: Core Framework (Week 1)
-- Basic HTML structure
-- Brand selector functionality
-- Function pool generation
-- Basic drag and drop
+### Phase 1: JSON Configuration Support
+- Create `/api/can/info` endpoint to serve CANInfo.json
+- Create `/api/can/info/upload` endpoint for JSON updates
+- Test JSON loading and parsing in frontend
+- Validate JSON structure and error handling
 
-### Phase 2: Validation & Rules (Week 2)
-- Brand-based filtering
-- Exclusive function rules
-- Drop zone validation
-- Error messaging
+### Phase 2: Core Framework
+- Update HTML structure to load from JSON
+- Dynamic brand selector from JSON data
+- Dynamic function pool from JSON definitions
+- Basic drag and drop event handling
 
-### Phase 3: Polish & Testing (Week 3)
-- Touch event handling
-- Visual animations
+### Phase 3: Validation & Rules
+- Brand-based filtering using JSON capabilities
+- Exclusive function rules from JSON config
+- Drop zone validation with JSON data
+- Error messaging and visual feedback
+
+### Phase 4: Polish & Testing
+- Touch event handling for tablets
+- Visual animations and transitions
 - Cross-browser testing
 - Performance optimization
+- Test with various JSON configurations
 
-### Phase 4: Integration (Week 4)
-- Backend API connection
-- Configuration persistence
+### Phase 5: Integration & Documentation
+- Replace existing checkbox interface
+- Configuration persistence verification
+- Create documentation for JSON format
+- Provide example for adding new brands
 - Testing with actual hardware
-- Documentation
+- Update version number
+
+## JSON Configuration Management
+
+### File Storage Location
+- **Development**: `/Users/chris/Documents/Code/AiO_New_Dawn/knowledge/CANInfo_v2.json`
+- **Production**: Stored in Teensy 4.1 flash memory (LittleFS or similar)
+- **Backup**: Users can download/upload via web interface
+
+### API Endpoints
+
+#### GET `/api/can/info`
+Returns the complete CANInfo JSON for the UI to consume.
+
+**Response:**
+```json
+{
+  "version": "2.0",
+  "functions": {...},
+  "busTypes": {...},
+  "brands": [...]
+}
+```
+
+#### POST `/api/can/info/upload`
+Allows users to upload a new CANInfo JSON file.
+
+**Request:**
+- Content-Type: `application/json`
+- Body: Complete CANInfo JSON
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Configuration updated successfully",
+  "version": "2.0"
+}
+```
+
+**Validation:**
+- Check JSON structure is valid
+- Verify required fields exist
+- Validate brand IDs are sequential (0-N)
+- Verify function bitValues are unique powers of 2
+- Check bus type IDs match enums
+
+#### GET `/api/can/info/download`
+Allows users to download current configuration for backup.
+
+**Response:**
+- Content-Type: `application/json`
+- Content-Disposition: `attachment; filename="CANInfo.json"`
+- Body: Current CANInfo JSON
+
+### Adding New Brands
+
+Users can add new brands by editing the JSON file:
+
+1. **Download** current configuration via `/api/can/info/download`
+2. **Edit** JSON file:
+   ```json
+   {
+     "id": 10,  // Next sequential ID
+     "name": "DEUTZ_FAHR",
+     "displayName": "Deutz-Fahr",
+     "description": "Deutz-Fahr tractors",
+     "capabilities": {
+       "V_Bus": ["steering"],
+       "K_Bus": ["buttons", "hitch"],
+       "ISO_Bus": []
+     },
+     "uiNotes": "Standard V-Bus steering configuration",
+     "canConfig": {
+       "VFilter": "0x...",
+       // Add CAN protocol details
+     }
+   }
+   ```
+3. **Upload** via `/api/can/info/upload`
+4. **Restart** device if backend code needs to recognize new brand
+
+### Adding New Functions
+
+To add a new function (e.g., "work_switch"):
+
+1. Add to `functions` section:
+   ```json
+   "work_switch": {
+     "name": "Work Switch",
+     "icon": "🔄",
+     "color": "#16a085",
+     "description": "Automatic work switch detection",
+     "exclusive": false,
+     "bitValue": 32  // Next power of 2
+   }
+   ```
+
+2. Add to brand capabilities where applicable:
+   ```json
+   "capabilities": {
+     "V_Bus": ["steering"],
+     "K_Bus": ["buttons", "hitch", "work_switch"],
+     "ISO_Bus": []
+   }
+   ```
+
+3. Backend code must be updated to handle new bitValue (0x20)
+
+### Version Management
+
+- Update `version` field when making significant changes
+- Include `lastUpdated` timestamp in metadata
+- Consider semantic versioning (2.0 → 2.1 for additions, 3.0 for breaking changes)
 
 ## Conclusion
 
 This drag-and-drop interface will significantly improve the user experience for CAN bus configuration while maintaining full compatibility with the existing backend systems. The visual approach reduces configuration errors and makes the system more accessible to users who may not understand the technical details of CAN bus protocols.
+
+### Key Benefits of JSON-Based Configuration
+
+1. **User Extensibility**: Users can add new brands without firmware updates
+2. **Easy Updates**: Configuration changes don't require recompilation
+3. **Centralized Data**: Single source of truth for UI and backend
+4. **Team Collaboration**: JSON file can be version controlled and shared
+5. **Backward Compatible**: Existing configurations remain functional
+6. **Future-Proof**: Easy to extend with new features and functions
