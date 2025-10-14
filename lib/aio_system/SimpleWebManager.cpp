@@ -1323,6 +1323,21 @@ void SimpleWebManager::handleCANConfig(EthernetClient& client, const String& met
             config.moduleID = doc["moduleID"];
         }
 
+        // Validate: ensure no duplicate bus names (except None/0)
+        uint8_t busNames[3] = {config.can1Name, config.can2Name, config.can3Name};
+        for (int i = 0; i < 3; i++) {
+            if (busNames[i] != 0) {  // Skip "None"
+                for (int j = i + 1; j < 3; j++) {
+                    if (busNames[i] == busNames[j]) {
+                        LOG_ERROR(EventSource::NETWORK, "Duplicate bus name detected: CAN%d and CAN%d both set to %d",
+                                  i+1, j+1, busNames[i]);
+                        SimpleHTTPServer::sendJSON(client, "{\"status\":\"error\",\"message\":\"Each bus name can only be used once\"}");
+                        return;
+                    }
+                }
+            }
+        }
+
         // Save to EEPROM
         configManager.setCANSteerConfig(config);
         configManager.saveCANSteerConfig();

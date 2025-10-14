@@ -63,7 +63,7 @@ const char TOUCH_FRIENDLY_LOG_VIEWER_PAGE[] PROGMEM = R"rawliteral(
             border-radius: 8px;
             font-family: 'Monaco', 'Courier New', monospace;
             font-size: 14px;
-            max-height: 500px;
+            max-height: 640px;
             overflow-y: auto;
             margin-bottom: 20px;
         }
@@ -151,13 +151,7 @@ const char TOUCH_FRIENDLY_LOG_VIEWER_PAGE[] PROGMEM = R"rawliteral(
         }
 
         .stats {
-            text-align: center;
-            padding: 10px;
-            background: #ecf0f1;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 16px;
-            color: #2c3e50;
+            display: none;
         }
 
         @media (max-width: 600px) {
@@ -202,13 +196,13 @@ const char TOUCH_FRIENDLY_LOG_VIEWER_PAGE[] PROGMEM = R"rawliteral(
 
             ws.onopen = () => {
                 console.log('WebSocket connected');
-                document.getElementById('autoRefreshBtn').textContent = '🟢 Live';
+                document.getElementById('autoRefreshBtn').textContent = 'Live';
                 document.getElementById('autoRefreshBtn').classList.add('active');
             };
 
             ws.onclose = () => {
                 console.log('WebSocket disconnected');
-                document.getElementById('autoRefreshBtn').textContent = '🔴 Disconnected';
+                document.getElementById('autoRefreshBtn').textContent = 'Disconnected';
                 document.getElementById('autoRefreshBtn').classList.remove('active');
                 ws = null;
                 // Auto-reconnect after 3 seconds
@@ -265,11 +259,6 @@ const char TOUCH_FRIENDLY_LOG_VIEWER_PAGE[] PROGMEM = R"rawliteral(
                 if (sourceFilter >= 0 && log.source !== sourceFilter) return false;
                 return true;
             });
-
-            // Update stats
-            const pausedText = paused ? ' [PAUSED]' : '';
-            document.getElementById('stats').innerHTML =
-                `Showing ${filtered.length} of ${logs.length} logs${pausedText}`;
 
             // Render filtered logs
             if (filtered.length === 0) {
@@ -330,10 +319,10 @@ const char TOUCH_FRIENDLY_LOG_VIEWER_PAGE[] PROGMEM = R"rawliteral(
 
             if (paused) {
                 btn.classList.add('active');
-                btn.textContent = '▶️ Resume';
+                btn.textContent = 'Resume';
             } else {
                 btn.classList.remove('active');
-                btn.textContent = '⏸️ Pause';
+                btn.textContent = 'Pause';
                 // Re-render to catch up with buffered logs
                 renderLogs();
             }
@@ -363,13 +352,15 @@ const char TOUCH_FRIENDLY_LOG_VIEWER_PAGE[] PROGMEM = R"rawliteral(
 </head>
 <body>
     <div class="container">
+        <h1>Live Log Viewer</h1>
+
         <div class="stats" id="stats">Loading...</div>
 
         <div class="controls">
-            <button class="control-btn" style="background: #7f8c8d;" onclick="window.location.href='/'">🏠 Home</button>
-            <button class="control-btn refresh-btn" id="pauseBtn" onclick="togglePause()">⏸️ Pause</button>
-            <button class="control-btn auto-refresh-btn" id="autoRefreshBtn">🔴 Live</button>
-            <button class="control-btn clear-btn" onclick="clearFilters()">✖ Clear</button>
+            <button class="control-btn" style="background: #7f8c8d;" onclick="window.location.href='/'">Home</button>
+            <button class="control-btn refresh-btn" id="pauseBtn" onclick="togglePause()">Pause</button>
+            <button class="control-btn auto-refresh-btn" id="autoRefreshBtn">Live</button>
+            <button class="control-btn clear-btn" onclick="clearFilters()">Clear</button>
         </div>
 
         <div class="filter-bar">

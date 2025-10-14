@@ -846,6 +846,26 @@ const char DRAG_DROP_CAN_CONFIG_PAGE[] PROGMEM = R"rawliteral(
 
         // Bus name change handler
         function onBusNameChange(busNum) {
+            // Check for duplicate bus names
+            const selectedValue = parseInt(document.getElementById(`can${busNum}Name`).value);
+
+            if (selectedValue !== 0) { // If not "None"
+                // Check other buses for the same selection
+                for (let i = 1; i <= 3; i++) {
+                    if (i !== busNum) {
+                        const otherValue = parseInt(document.getElementById(`can${i}Name`).value);
+                        if (otherValue === selectedValue) {
+                            // Duplicate found - revert this selection and show error
+                            document.getElementById(`can${busNum}Name`).value = 0;
+                            const busName = busNameLabels[selectedValue];
+                            showNotification(`${busName} is already assigned to CAN${i}. Each bus name can only be used once.`, 'error');
+                            updateFunctionPool();
+                            return;
+                        }
+                    }
+                }
+            }
+
             updateFunctionPool();
         }
 

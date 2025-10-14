@@ -17,8 +17,9 @@ body {
     line-height: 1.6;
     margin: 0;
     padding: 0;
-    background: #f5f5f5;
-    color: #333;
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+    background-attachment: fixed;
+    color: #ffffff;
     -webkit-text-size-adjust: 100%; /* Prevent font scaling in landscape */
 }
 
@@ -32,15 +33,17 @@ body {
 h1 {
     font-size: 28px;
     margin: 15px 0 10px;
-    color: #2c3e50;
+    color: #ffffff;
+    text-align: center;
 }
 
 h2 {
     font-size: 20px;
     margin: 15px 0 10px;
-    color: #34495e;
-    border-bottom: 2px solid #ecf0f1;
+    color: #ffffff;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.3);
     padding-bottom: 8px;
+    text-align: center;
 }
 
 /* Touch-friendly navigation */
@@ -276,14 +279,21 @@ th, td {
 .info {
     margin-top: 40px;
     padding: 20px;
-    background: #ecf0f1;
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 10px;
     text-align: center;
     font-size: 16px;
+    color: #ffffff;
+    font-weight: 500;
 }
 
 .info p {
     margin: 5px 0;
+}
+
+.info span {
+    color: #ffffff;
+    font-weight: 600;
 }
 
 /* Media queries for different tablet sizes */
