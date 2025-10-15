@@ -1,0 +1,210 @@
+name: PR AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - master
+      - staging
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    name: Claude AI Code Review
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch base branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }}
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          echo "Getting changed files between base and head..."
+          git diff --name-only origin/${{ github.event.pull_request.base.ref }}...${{ github.event.pull_request.head.sha }} > changed_files.txt
+          cat changed_files.txt
+
+          # Get full diff for review
+          git diff origin/${{ github.event.pull_request.base.ref }}...${{ github.event.pull_request.head.sha }} > full_diff.txt
+
+          echo "files_changed=$(wc -l < changed_files.txt)" >> $GITHUB_OUTPUT
+
+      - name: Read architecture documentation
+        id: read-docs
+        run: |
+          # Read key architecture and style documents
+          if [ -f "CLAUDE.md" ]; then
+            echo "Reading CLAUDE.md..."
+            cat CLAUDE.md > context_docs.txt
+          fi
+
+          if [ -f "docs/ARCHITECTURE_OVERVIEW.md" ]; then
+            echo "Reading ARCHITECTURE_OVERVIEW.md..."
+            echo -e "\n\n=== ARCHITECTURE OVERVIEW ===" >> context_docs.txt
+            cat docs/ARCHITECTURE_OVERVIEW.md >> context_docs.txt
+          fi
+
+          if [ -f ".agent-os/standards/code-style.md" ]; then
+            echo "Reading code-style.md..."
+            echo -e "\n\n=== CODE STYLE ===" >> context_docs.txt
+            cat .agent-os/standards/code-style.md >> context_docs.txt
+          fi
+
+          if [ -f ".agent-os/standards/best-practices.md" ]; then
+            echo "Reading best-practices.md..."
+            echo -e "\n\n=== BEST PRACTICES ===" >> context_docs.txt
+            cat .agent-os/standards/best-practices.md >> context_docs.txt
+          fi
+
+      - name: Prepare review prompt
+        id: review-prompt
+        run: |
+          cat > review_prompt.txt << 'PROMPT_EOF'
+          You are an expert code reviewer for the AiO New Dawn project, a Teensy 4.1-based agricultural control system for AgOpenGPS.
+
+          ## Your Task
+          Review the provided code changes for:
+          1. **Architectural Compliance**: Ensure changes follow AiO New Dawn architecture patterns
+          2. **Code Style Matching**: Verify code matches the project's C++ embedded systems style
+          3. **Logic Flaws**: Identify potential bugs, race conditions, or incorrect implementations
+          4. **Real-Time Constraints**: Check for timing issues that could affect 100Hz autosteer loop or 10Hz sensor updates
+          5. **Hardware Safety**: Verify pin ownership, resource conflicts, and proper hardware abstraction usage
+
+          ## Project Architecture Context
+          PROMPT_EOF
+
+          cat context_docs.txt >> review_prompt.txt
+
+          cat >> review_prompt.txt << 'PROMPT_EOF'
+
+          ## Code Changes to Review
+
+          PROMPT_EOF
+
+          cat full_diff.txt >> review_prompt.txt
+
+          cat >> review_prompt.txt << 'PROMPT_EOF'
+
+          ## Review Guidelines
+
+          ### Critical Issues (Must Fix)
+          - Breaking architectural patterns (e.g., registering for PGN 200/202 instead of using broadcast callback)
+          - Race conditions or timing violations in real-time loops
+          - Hardware resource conflicts or missing pin ownership checks
+          - Memory leaks or unsafe pointer usage
+          - Security vulnerabilities
+
+          ### Important Issues (Should Fix)
+          - Code style violations (naming, formatting)
+          - Missing error handling
+          - Inefficient algorithms that could impact performance
+          - Missing or incorrect documentation
+          - Non-compliance with module patterns
+
+          ### Suggestions (Consider)
+          - Code clarity improvements
+          - Better variable naming
+          - Refactoring opportunities
+          - Additional comments for complex logic
+
+          ## Output Format
+
+          Provide your review as structured comments with:
+          - **Severity**: CRITICAL / IMPORTANT / SUGGESTION
+          - **File**: The specific file and line number
+          - **Issue**: Clear description of the problem
+          - **Recommendation**: Specific fix or improvement
+          - **Rationale**: Why this matters for the project
+
+          If no issues found, respond with:
+          "✅ No issues found. Code changes follow project standards and architecture."
+
+          Focus on being constructive and educational. Explain the "why" behind recommendations.
+          PROMPT_EOF
+
+          echo "Review prompt prepared"
+
+      - name: AI Code Review with Claude
+        id: ai-review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "❌ ANTHROPIC_API_KEY secret not configured"
+            echo "review_result=⚠️ AI Review skipped: ANTHROPIC_API_KEY not configured. Please add it to repository secrets." >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Prepare the API request
+          PROMPT=$(cat review_prompt.txt | jq -Rs .)
+
+          # Call Claude API
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "{
+              \"model\": \"claude-sonnet-4-20250514\",
+              \"max_tokens\": 8000,
+              \"messages\": [
+                {
+                  \"role\": \"user\",
+                  \"content\": $PROMPT
+                }
+              ]
+            }")
+
+          # Extract the review content
+          REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text // "Error: Unable to get review from Claude API"')
+
+          # Check for API errors
+          if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+            ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error.message')
+            echo "❌ Claude API Error: $ERROR_MSG"
+            REVIEW="⚠️ AI Review failed: $ERROR_MSG"
+          fi
+
+          # Save review to file
+          echo "$REVIEW" > ai_review.txt
+
+          # Set output (escape for multiline)
+          {
+            echo 'review_result<<REVIEW_EOF'
+            cat ai_review.txt
+            echo 'REVIEW_EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Post review comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const review = `${{ steps.ai-review.outputs.review_result }}`;
+
+            // Post the review as a PR comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 🤖 AI Code Review (Claude Sonnet 4.5)
+
+            ${review}
+
+            ---
+            *This review was automatically generated using Claude Sonnet 4.5 based on the project's architecture and coding standards.*`
+            });
+
+            console.log('AI review posted to PR');
