@@ -216,7 +216,7 @@ float AutosteerProcessor::rowSenseProcess(float targetAngle) {
 
     // accumulate WAS offset for nudge effect
     float offsetFactor = 0.1f; // Factor to adjust nudge effect (adjust as needed)
-    offsetFactor = float(configManager.getUser4()) / 100.0f; // User4 = offset factor in 0-20, scale to 0.0-2.0
+    offsetFactor = float(configManager.getUser4()) / 1000.0f; // User4 = offset factor in 0-20, scale to 0.0-2.0
     int maxOffset = 300; // Maximum WAS offset adjustment (in counts), 250 = 26", 300 = 31"
     int16_t wasOffset = adProcessor.getWASOffset();
     int16_t wasOffsetConfig = configManager.getWasOffset();
@@ -236,7 +236,8 @@ float AutosteerProcessor::rowSenseProcess(float targetAngle) {
     Serial.printf("  Ang %2.1f", newTargetAngle);
 
     //targetAngle = steerAngle; // Set global target angle directly
-    return newTargetAngle;  // Return the new calculated row sense steer angle
+    //return newTargetAngle;  // Return the new calculated row sense steer angle
+    return targetAngle;
     }
 }
 
