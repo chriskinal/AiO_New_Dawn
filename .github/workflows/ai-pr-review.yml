@@ -1,0 +1,194 @@
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    name: Claude AI Code Review
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Fetch base branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+      
+      - name: Get changed files
+        id: changed-files
+        run: |
+          # Get list of changed files
+          git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD > changed_files.txt
+          echo "Changed files:"
+          cat changed_files.txt
+          
+          # Get the diff
+          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > pr_diff.txt
+          echo "Diff size: $(wc -l < pr_diff.txt) lines"
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install anthropic requests
+      
+      - name: Run Claude AI Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_NAME: ${{ github.repository }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import os
+          import anthropic
+          import requests
+          import json
+          
+          # Read the diff
+          with open('pr_diff.txt', 'r') as f:
+              diff_content = f.read()
+          
+          # Read changed files
+          with open('changed_files.txt', 'r') as f:
+              changed_files = f.read().strip().split('\n')
+          
+          # Truncate diff if too large (Claude has token limits)
+          max_diff_chars = 50000
+          if len(diff_content) > max_diff_chars:
+              diff_content = diff_content[:max_diff_chars] + "\n\n[... diff truncated due to size ...]"
+          
+          # Initialize Claude client
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+          
+          # Prepare the review prompt
+          review_prompt = f"""You are an expert code reviewer for the AiO New Dawn project, a Teensy 4.1-based agricultural control system for AgOpenGPS.
+
+          PR Title: {os.environ['PR_TITLE']}
+          Author: @{os.environ['PR_AUTHOR']}
+          Changed Files: {', '.join(changed_files)}
+
+          Please review this pull request with a constructive and collaborative tone, providing helpful feedback to the submitter.
+
+          Focus your review on the following areas:
+
+          1. **Architectural Standards Compliance**:
+             - Check against modular design principles with clear interfaces
+             - Verify event-driven communication using PGN messages
+             - Check for proper hardware abstraction and resource management
+             - Verify timing-critical code (100Hz autosteer, 10Hz sensors)
+
+          2. **Code Style Compliance**:
+             - Check naming conventions (snake_case for variables/methods, PascalCase for classes)
+             - Verify proper indentation (2 spaces for this project)
+             - Check comment quality (explain "why" not "what")
+             - Ensure comments are updated with code changes
+
+          3. **Best Practices**:
+             - Keep code simple and readable
+             - Avoid over-engineering
+             - Check for DRY principle violations
+             - Verify single responsibility principle
+
+          4. **C++ and PlatformIO Specific**:
+             - Check for memory safety issues
+             - Verify proper use of Arduino/Teensy APIs
+             - Check for timing issues in real-time code
+             - Verify proper pin management (INPUT_DISABLE for analog pins)
+             - Check for resource conflicts
+
+          5. **Logic Flaws**:
+             - Identify potential bugs or edge cases
+             - Check for race conditions in timing-critical code
+             - Verify error handling
+             - Check for null pointer dereferences
+             - Identify potential buffer overflows
+
+          6. **Project-Specific Concerns**:
+             - PGN message handling (never register for PGN 200/202, use broadcast callbacks)
+             - Motor driver interface usage
+             - Network communication patterns
+             - EEPROM configuration management
+             - Version numbering (should be updated in lib/aio_system/Version.h if functionality changed)
+
+          Provide your feedback in a friendly, constructive manner. When suggesting improvements:
+          - Explain WHY the change is beneficial
+          - Provide specific examples or code snippets when helpful
+          - Acknowledge good practices when you see them
+          - Prioritize critical issues over minor style points
+          - Offer suggestions, not demands
+
+          If the code looks good, say so! Positive reinforcement is valuable.
+
+          Here's the diff to review:
+
+          ```diff
+          {diff_content}
+          ```
+
+          Please provide your review as a markdown comment that will be posted on the PR.
+          """
+          
+          # Call Claude API
+          print("Requesting review from Claude AI...")
+          message = client.messages.create(
+              model="claude-3-5-sonnet-20241022",
+              max_tokens=4096,
+              messages=[
+                  {
+                      "role": "user",
+                      "content": review_prompt
+                  }
+              ]
+          )
+          
+          review_comment = message.content[0].text
+          
+          print("Review received from Claude AI")
+          print("=" * 80)
+          print(review_comment)
+          print("=" * 80)
+          
+          # Post review as a comment
+          github_token = os.environ['GITHUB_TOKEN']
+          repo_name = os.environ['REPO_NAME']
+          pr_number = os.environ['PR_NUMBER']
+          
+          headers = {
+              'Authorization': f'token {github_token}',
+              'Accept': 'application/vnd.github.v3+json'
+          }
+          
+          comment_body = f"""## 🤖 Claude AI Code Review
+
+          {review_comment}
+
+          ---
+          *This review was automatically generated by Claude AI. Please use your judgment when addressing feedback.*
+          """
+          
+          url = f'https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments'
+          response = requests.post(url, headers=headers, json={'body': comment_body})
+          
+          if response.status_code == 201:
+              print("Review comment posted successfully!")
+          else:
+              print(f"Failed to post comment: {response.status_code}")
+              print(response.text)
+              exit(1)
+          PYTHON_SCRIPT
