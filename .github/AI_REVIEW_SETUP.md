@@ -36,7 +36,7 @@ When a PR is opened, updated, or reopened:
 
 1. **GitHub Actions triggers** the workflow
 2. **Code changes are extracted** (diff and file list)
-3. **Claude AI analyzes** the changes using GPT-3.5-sonnet
+3. **Claude AI analyzes** the changes using Claude 3.5 Sonnet
 4. **Review is posted** as a comment on the PR
 5. **Contributors see feedback** immediately
 
