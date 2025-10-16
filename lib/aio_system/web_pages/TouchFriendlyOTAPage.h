@@ -39,6 +39,7 @@ const char TOUCH_FRIENDLY_OTA_PAGE[] PROGMEM = R"rawliteral(
             border-radius: 8px;
             margin-bottom: 20px;
             text-align: center;
+            color: #c62828;
         }
         
         .warning-box strong {

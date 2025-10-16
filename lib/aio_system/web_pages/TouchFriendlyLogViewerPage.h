@@ -22,6 +22,11 @@ const char TOUCH_FRIENDLY_LOG_VIEWER_PAGE[] PROGMEM = R"rawliteral(
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
+            color: #2c3e50;
+        }
+
+        .filter-bar h3 {
+            color: #2c3e50;
         }
 
         .filter-row {
