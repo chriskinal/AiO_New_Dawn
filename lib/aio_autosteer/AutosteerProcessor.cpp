@@ -86,13 +86,19 @@ bool AutosteerProcessor::init() {
     
     // Load steer settings from EEPROM
     configManager.loadSteerSettings();
-    
+
     // Update ADProcessor with loaded values
     adProcessor.setWASOffset(configManager.getWasOffset());
     adProcessor.setWASCountsPerDegree(configManager.getSteerSensorCounts());
-    
-    LOG_INFO(EventSource::AUTOSTEER, "Loaded steer settings from EEPROM: offset=%d, CPD=%d, highPWM=%d", 
+
+    // Load and apply soft start settings
+    softStartDurationMs = configManager.getSoftStartDurationMs();
+    softAccelDurationMs = softStartDurationMs / 2;  // Direction changes use half duration
+
+    LOG_INFO(EventSource::AUTOSTEER, "Loaded steer settings from EEPROM: offset=%d, CPD=%d, highPWM=%d",
              configManager.getWasOffset(), configManager.getSteerSensorCounts(), configManager.getHighPWM());
+    LOG_INFO(EventSource::AUTOSTEER, "Soft start: duration=%dms (accel=%dms)",
+             softStartDurationMs, softAccelDurationMs);
     
     // PID functionality is now integrated directly in updateMotorControl()
     

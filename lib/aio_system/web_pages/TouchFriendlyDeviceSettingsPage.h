@@ -207,12 +207,22 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
         function updateSensitivityValue(value) {
             document.getElementById('sensitivityValue').textContent = value;
         }
-        
+
+        function updateSoftStartValue(value) {
+            const val = parseInt(value);
+            if (val === 0) {
+                document.getElementById('softStartValue').textContent = 'OFF';
+            } else {
+                document.getElementById('softStartValue').textContent = val + ' ms';
+            }
+        }
+
         function saveSettings() {
             const settings = {
                 udpPassthrough: document.getElementById('udpPassthrough').checked,
                 sensorFusion: document.getElementById('sensorFusion').checked,
                 pwmBrakeMode: document.getElementById('pwmBrakeMode').checked,
+                softStartDuration: parseInt(document.getElementById('softStartDuration').value),
                 encoderType: parseInt(document.getElementById('encoderType').value),
                 serialRadioBaud: parseInt(document.getElementById('serialRadioBaud').value),
                 jdPWMEnabled: document.getElementById('jdPWMEnabled').checked,
@@ -262,6 +272,8 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                     document.getElementById('udpPassthrough').checked = data.udpPassthrough || false;
                     document.getElementById('sensorFusion').checked = data.sensorFusion || false;
                     document.getElementById('pwmBrakeMode').checked = data.pwmBrakeMode || false;
+                    document.getElementById('softStartDuration').value = data.softStartDuration || 500;
+                    updateSoftStartValue(data.softStartDuration || 500);
                     document.getElementById('encoderType').value = data.encoderType || 1;
                     document.getElementById('serialRadioBaud').value = data.serialRadioBaud || 115200;
                     document.getElementById('jdPWMEnabled').checked = data.jdPWMEnabled || false;
@@ -323,7 +335,7 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                     </label>
                 </div>
                 
-                <div class="toggle-container" style="border-bottom: none;">
+                <div class="toggle-container">
                     <div class="toggle-info">
                         <label for="pwmBrakeMode" class="toggle-label">PWM Motor Brake Mode</label>
                         <div class="help-text">
@@ -335,8 +347,25 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
-                
-                <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ecf0f1;">
+
+                <div style="margin: 15px 0; padding: 15px 0; border-top: 1px solid #ecf0f1; border-bottom: none;">
+                    <div class="slider-container">
+                        <label for="softStartDuration">Motor Soft Start Duration</label>
+                        <div class="slider-value" id="softStartValue">500 ms</div>
+                        <input type="range" id="softStartDuration" name="softStartDuration"
+                               min="0" max="1000" value="500" step="50"
+                               oninput="updateSoftStartValue(this.value)">
+                        <div class="sensitivity-labels">
+                            <span>OFF (0)</span>
+                            <span>1000ms</span>
+                        </div>
+                        <div class="help-text" style="text-align: center; margin-top: 5px;">
+                            Ramps motor power on startup and direction changes. 0 = disabled. Direction changes use half this duration automatically.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 0; padding-top: 0;">
                     <label for="encoderType">Encoder Type:</label>
                     <select id="encoderType" name="encoderType">
                         <option value="1">Single Channel</option>

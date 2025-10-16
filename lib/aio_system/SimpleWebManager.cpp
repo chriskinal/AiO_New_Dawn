@@ -600,6 +600,7 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         doc["udpPassthrough"] = config->getGPSPassThrough();
         doc["sensorFusion"] = false;  // Sensor fusion not implemented yet
         doc["pwmBrakeMode"] = config->getPWMBrakeMode();
+        doc["softStartDuration"] = config->getSoftStartDurationMs();
         doc["encoderType"] = config->getEncoderType();
         doc["serialRadioBaud"] = config->getSerialRadioBaudRate();
         doc["jdPWMEnabled"] = config->getJDPWMEnabled();
@@ -626,6 +627,7 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         bool udpPassthrough = doc["udpPassthrough"] | false;
         bool sensorFusion = doc["sensorFusion"] | false;
         bool pwmBrakeMode = doc["pwmBrakeMode"] | false;
+        uint16_t softStartDuration = doc["softStartDuration"] | 500;
         int encoderType = doc["encoderType"] | 1;
         uint32_t serialRadioBaud = doc["serialRadioBaud"] | 115200;
         bool jdPWMEnabled = doc["jdPWMEnabled"] | false;
@@ -635,6 +637,7 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         ConfigManager* config = ConfigManager::getInstance();
         config->setGPSPassThrough(udpPassthrough);
         config->setPWMBrakeMode(pwmBrakeMode);
+        config->setSoftStartDurationMs(softStartDuration);
         config->setEncoderType(encoderType);
         config->setSerialRadioBaudRate(serialRadioBaud);
         config->setJDPWMEnabled(jdPWMEnabled);
@@ -649,7 +652,7 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         // Apply JD PWM mode change to ADProcessor
         extern ADProcessor adProcessor;
         adProcessor.setJDPWMMode(jdPWMEnabled);
-        
+
         // Update GNSSProcessor with new passthrough setting
         gnssProcessor.setUDPPassthrough(udpPassthrough);
 
@@ -657,8 +660,19 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         extern SerialManager serialManager;
         serialManager.updateRadioBaudRate(serialRadioBaud);
 
-        LOG_DEBUG(EventSource::NETWORK, "Device settings saved: UDP=%d, Brake=%d, Encoder=%d, RadioBaud=%lu",
-                  udpPassthrough, pwmBrakeMode, encoderType, serialRadioBaud);
+        // Apply soft start duration to AutosteerProcessor immediately
+        AutosteerProcessor* autosteerProc = AutosteerProcessor::getInstance();
+        if (autosteerProc) {
+            autosteerProc->setSoftStartDuration(softStartDuration);
+            autosteerProc->setSoftAccelDuration(softStartDuration / 2);
+            LOG_INFO(EventSource::NETWORK, "Soft start APPLIED: %dms (accel=%dms) - verifying: getSoftStartDuration()=%d",
+                     softStartDuration, softStartDuration / 2, autosteerProc->getSoftStartDuration());
+        } else {
+            LOG_ERROR(EventSource::NETWORK, "Failed to apply soft start - AutosteerProcessor not available!");
+        }
+
+        LOG_DEBUG(EventSource::NETWORK, "Device settings saved: UDP=%d, Brake=%d, SoftStart=%d, Encoder=%d, RadioBaud=%lu",
+                  udpPassthrough, pwmBrakeMode, softStartDuration, encoderType, serialRadioBaud);
         
         SimpleHTTPServer::sendJSON(client, "{\"status\":\"saved\"}");
         
