@@ -181,16 +181,24 @@ void AutosteerProcessor::process() {
     previousLinkState = currentLinkState;
     
     // Update Virtual WAS if enabled
-    if (wheelAngleFusionPtr && configManager.getINSUseFusion()) {
-        float dt = 10.0f / 1000.0f;  // 10ms = 0.01 seconds (100Hz from SimpleScheduler)
-        wheelAngleFusionPtr->update(dt);
+    if (configManager.getINSUseFusion()) {
+        // Initialize fusion if enabled but not yet initialized
+        if (!wheelAngleFusionPtr) {
+            initializeFusion();
+        }
 
-        // Periodic sensor fusion mode logging (every 60 seconds)
-        static uint32_t lastFusionLog = 0;
-        if (millis() - lastFusionLog > 60000) {
-            lastFusionLog = millis();
-            LOG_INFO(EventSource::AUTOSTEER, "Sensor Fusion Mode: %s",
-                     wheelAngleFusionPtr->getFusionMode());
+        // Update fusion if initialized successfully
+        if (wheelAngleFusionPtr) {
+            float dt = 10.0f / 1000.0f;  // 10ms = 0.01 seconds (100Hz from SimpleScheduler)
+            wheelAngleFusionPtr->update(dt);
+
+            // Periodic sensor fusion mode logging (every 60 seconds)
+            static uint32_t lastFusionLog = 0;
+            if (millis() - lastFusionLog > 60000) {
+                lastFusionLog = millis();
+                LOG_INFO(EventSource::AUTOSTEER, "Sensor Fusion Mode: %s",
+                         wheelAngleFusionPtr->getFusionMode());
+            }
         }
     }
 
