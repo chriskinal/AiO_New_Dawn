@@ -340,9 +340,9 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                 </div>
 
                 <div class="form-group" style="margin-top: 15px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                        <label for="softStartDuration" style="margin: 0; flex: 1;">Motor Soft Start:</label>
-                        <select id="softStartDuration" name="softStartDuration" style="width: auto; flex: 0 0 140px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label for="softStartDuration" style="margin: 0; white-space: nowrap;">Motor Soft Start:</label>
+                        <select id="softStartDuration" name="softStartDuration" style="width: auto; flex: 0 0 110px;">
                             <option value="0">OFF</option>
                             <option value="100">100 ms</option>
                             <option value="200">200 ms</option>
@@ -355,9 +355,7 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                             <option value="900">900 ms</option>
                             <option value="1000">1000 ms</option>
                         </select>
-                    </div>
-                    <div class="help-text">
-                        Ramps motor power on startup and direction changes. Direction changes use half this duration automatically.
+                        <span class="help-text" style="margin: 0; flex: 1; font-size: 13px;">Ramps motor power on startup and direction changes. Direction changes use half duration.</span>
                     </div>
                 </div>
 
