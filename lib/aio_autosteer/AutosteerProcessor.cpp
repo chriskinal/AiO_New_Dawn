@@ -184,8 +184,16 @@ void AutosteerProcessor::process() {
     if (wheelAngleFusionPtr && configManager.getINSUseFusion()) {
         float dt = 10.0f / 1000.0f;  // 10ms = 0.01 seconds (100Hz from SimpleScheduler)
         wheelAngleFusionPtr->update(dt);
+
+        // Periodic sensor fusion mode logging (every 60 seconds)
+        static uint32_t lastFusionLog = 0;
+        if (millis() - lastFusionLog > 60000) {
+            lastFusionLog = millis();
+            LOG_INFO(EventSource::AUTOSTEER, "Sensor Fusion Mode: %s",
+                     wheelAngleFusionPtr->getFusionMode());
+        }
     }
-    
+
     // === BUTTON/SWITCH LOGIC ===
     // Static variable for Massey/Fendt/CaseIH button state tracking (needs to persist across cycles)
     static bool lastMasseyEngageState = false;

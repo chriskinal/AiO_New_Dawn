@@ -353,6 +353,42 @@ bool WheelAngleFusion::isHealthy() const {
     return true;
 }
 
+const char* WheelAngleFusion::getFusionMode() const {
+    // Determine current fusion mode based on sensor availability
+    // Modes from sensor_fusion_proposal.md:
+    // - "Dual GPS + IMU + Encoder" - Not applicable (no dual GPS in this implementation)
+    // - "Single GPS/INS + Encoder" - GPS heading rate + encoder
+    // - "IMU + Encoder" - IMU heading rate + encoder
+    // - "Encoder Only" - No heading rate source available
+
+    bool hasGPS = gnssProcessor && gnssProcessor->hasGPS();
+    bool hasIMU = imuProcessor && imuProcessor->hasValidData();
+    bool hasEncoder = keyaDriver != nullptr;
+
+    // Check if GPS/INS heading rate is being used
+    if (hasGPS && !config.useIMUHeadingRate && hasEncoder) {
+        // Check if we have INS data
+        const auto& gpsData = gnssProcessor->getData();
+        if (gpsData.hasINS) {
+            return "Single GPS/INS + Encoder";
+        } else {
+            return "Single GPS + Encoder";
+        }
+    }
+
+    // Check if IMU heading rate is being used
+    if (hasIMU && config.useIMUHeadingRate && hasEncoder) {
+        return "IMU + Encoder";
+    }
+
+    // Fallback to encoder only
+    if (hasEncoder) {
+        return "Encoder Only";
+    }
+
+    return "No Sensors";
+}
+
 void WheelAngleFusion::startCalibration() {
     LOG_INFO(EventSource::AUTOSTEER, "Starting wheel angle fusion calibration");
     calibrationMode = true;

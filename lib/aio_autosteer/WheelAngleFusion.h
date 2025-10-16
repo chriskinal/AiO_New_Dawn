@@ -81,6 +81,9 @@ public:
     bool isHealthy() const;
     bool hasValidGPSAngle() const { return gpsAngleValid; }
     uint32_t getLastUpdateTime() const { return lastUpdateTime; }
+
+    // Get current fusion mode for logging
+    const char* getFusionMode() const;
     
     // Calibration
     void startCalibration();
