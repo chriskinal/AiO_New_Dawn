@@ -700,14 +700,10 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         // Update GNSSProcessor with new passthrough setting
         gnssProcessor.setUDPPassthrough(udpPassthrough);
 
-        // Apply Virtual WAS (sensor fusion) changes
+        // Virtual WAS (sensor fusion) setting saved to EEPROM
+        // It will be initialized on next autosteer processor call if enabled
         if (sensorFusion) {
-            // Initialize Virtual WAS if enabled
-            AutosteerProcessor* autosteer = AutosteerProcessor::getInstance();
-            if (autosteer) {
-                autosteer->init();  // Will initialize fusion if not already done
-                LOG_INFO(EventSource::NETWORK, "Virtual WAS (sensor fusion) enabled");
-            }
+            LOG_INFO(EventSource::NETWORK, "Virtual WAS (sensor fusion) enabled - will initialize on next cycle");
         }
 
         // Apply new radio baud rate immediately
