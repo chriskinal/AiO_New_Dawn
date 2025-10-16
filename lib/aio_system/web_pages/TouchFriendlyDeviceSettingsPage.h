@@ -208,14 +208,6 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
             document.getElementById('sensitivityValue').textContent = value;
         }
 
-        function updateSoftStartValue(value) {
-            const val = parseInt(value);
-            if (val === 0) {
-                document.getElementById('softStartValue').textContent = 'OFF';
-            } else {
-                document.getElementById('softStartValue').textContent = val + ' ms';
-            }
-        }
 
         function saveSettings() {
             const settings = {
@@ -273,7 +265,6 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                     document.getElementById('sensorFusion').checked = data.sensorFusion || false;
                     document.getElementById('pwmBrakeMode').checked = data.pwmBrakeMode || false;
                     document.getElementById('softStartDuration').value = data.softStartDuration || 500;
-                    updateSoftStartValue(data.softStartDuration || 500);
                     document.getElementById('encoderType').value = data.encoderType || 1;
                     document.getElementById('serialRadioBaud').value = data.serialRadioBaud || 115200;
                     document.getElementById('jdPWMEnabled').checked = data.jdPWMEnabled || false;
@@ -348,24 +339,29 @@ const char TOUCH_FRIENDLY_DEVICE_SETTINGS_PAGE[] PROGMEM = R"rawliteral(
                     </label>
                 </div>
 
-                <div style="margin: 15px 0; padding: 15px 0; border-top: 1px solid #ecf0f1; border-bottom: none;">
-                    <div class="slider-container">
-                        <label for="softStartDuration">Motor Soft Start Duration</label>
-                        <div class="slider-value" id="softStartValue">500 ms</div>
-                        <input type="range" id="softStartDuration" name="softStartDuration"
-                               min="0" max="1000" value="500" step="50"
-                               oninput="updateSoftStartValue(this.value)">
-                        <div class="sensitivity-labels">
-                            <span>OFF (0)</span>
-                            <span>1000ms</span>
-                        </div>
-                        <div class="help-text" style="text-align: center; margin-top: 5px;">
-                            Ramps motor power on startup and direction changes. 0 = disabled. Direction changes use half this duration automatically.
-                        </div>
+                <div class="form-group" style="margin-top: 15px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                        <label for="softStartDuration" style="margin: 0; flex: 1;">Motor Soft Start:</label>
+                        <select id="softStartDuration" name="softStartDuration" style="width: auto; flex: 0 0 140px;">
+                            <option value="0">OFF</option>
+                            <option value="100">100 ms</option>
+                            <option value="200">200 ms</option>
+                            <option value="300">300 ms</option>
+                            <option value="400">400 ms</option>
+                            <option value="500" selected>500 ms</option>
+                            <option value="600">600 ms</option>
+                            <option value="700">700 ms</option>
+                            <option value="800">800 ms</option>
+                            <option value="900">900 ms</option>
+                            <option value="1000">1000 ms</option>
+                        </select>
+                    </div>
+                    <div class="help-text">
+                        Ramps motor power on startup and direction changes. Direction changes use half this duration automatically.
                     </div>
                 </div>
 
-                <div class="form-group" style="margin-top: 0; padding-top: 0;">
+                <div class="form-group">
                     <label for="encoderType">Encoder Type:</label>
                     <select id="encoderType" name="encoderType">
                         <option value="1">Single Channel</option>
