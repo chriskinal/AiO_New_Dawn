@@ -644,7 +644,7 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         doc["deviceType"] = "Steer";  // Fixed for steer module
         doc["moduleId"] = 126;  // Steer module ID
         doc["udpPassthrough"] = config->getGPSPassThrough();
-        doc["sensorFusion"] = false;  // Sensor fusion not implemented yet
+        doc["sensorFusion"] = config->getINSUseFusion();  // Virtual WAS enabled
         doc["pwmBrakeMode"] = config->getPWMBrakeMode();
         doc["encoderType"] = config->getEncoderType();
         doc["serialRadioBaud"] = config->getSerialRadioBaudRate();
@@ -680,17 +680,18 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         // Save to ConfigManager
         ConfigManager* config = ConfigManager::getInstance();
         config->setGPSPassThrough(udpPassthrough);
+        config->setINSUseFusion(sensorFusion);  // Virtual WAS setting
         config->setPWMBrakeMode(pwmBrakeMode);
         config->setEncoderType(encoderType);
         config->setSerialRadioBaudRate(serialRadioBaud);
         config->setJDPWMEnabled(jdPWMEnabled);
         config->setJDPWMSensitivity(jdPWMSensitivity);
-        // Sensor fusion configuration not implemented yet
         
         // Save to EEPROM
         config->saveTurnSensorConfig();  // This saves encoder type and JD PWM settings
         config->saveSteerConfig();       // This saves PWM brake mode
         config->saveGPSConfig();         // This saves GPS passthrough
+        config->saveINSConfig();         // This saves Virtual WAS (sensor fusion) setting
         
         // Apply JD PWM mode change to ADProcessor
         extern ADProcessor adProcessor;
@@ -698,6 +699,16 @@ void SimpleWebManager::handleDeviceSettings(EthernetClient& client, const String
         
         // Update GNSSProcessor with new passthrough setting
         gnssProcessor.setUDPPassthrough(udpPassthrough);
+
+        // Apply Virtual WAS (sensor fusion) changes
+        if (sensorFusion) {
+            // Initialize Virtual WAS if enabled
+            AutosteerProcessor* autosteer = AutosteerProcessor::getInstance();
+            if (autosteer) {
+                autosteer->init();  // Will initialize fusion if not already done
+                LOG_INFO(EventSource::NETWORK, "Virtual WAS (sensor fusion) enabled");
+            }
+        }
 
         // Apply new radio baud rate immediately
         extern SerialManager serialManager;

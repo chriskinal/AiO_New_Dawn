@@ -6,7 +6,7 @@
 SerialManager *SerialManager::instance = nullptr;
 
 SerialManager::SerialManager()
-    : isInitialized(false), serialIMU(&Serial4), prevUSB1DTR(false), prevUSB2DTR(false)
+    : isInitialized(false), serialIMU(&Serial4), prevUSB1DTR(false), prevUSB2DTR(false), currentRadioBaudRate(0)
 {
     instance = this;
 }
@@ -69,6 +69,7 @@ bool SerialManager::initializeSerialPorts()
     }
     SerialRadio.begin(radioBaud);
     SerialRadio.addMemoryForRead(radioRxBuffer, sizeof(radioRxBuffer));
+    currentRadioBaudRate = radioBaud;  // Track current baud rate
 
     // RS232 Serial - use class member buffer
     SerialRS232.begin(BAUD_RS232);
@@ -263,13 +264,20 @@ void SerialManager::updateRadioBaudRate(uint32_t newBaudRate)
         return;
     }
 
-    LOG_INFO(EventSource::SYSTEM, "Updating radio baud rate to %lu", newBaudRate);
+    // Only update if baud rate actually changed
+    if (currentRadioBaudRate == newBaudRate) {
+        LOG_DEBUG(EventSource::SYSTEM, "Radio baud rate unchanged (%lu), skipping update", newBaudRate);
+        return;
+    }
+
+    LOG_INFO(EventSource::SYSTEM, "Updating radio baud rate from %lu to %lu", currentRadioBaudRate, newBaudRate);
 
     // Close and reopen the serial port with new baud rate
     SerialRadio.end();
     delay(10); // Brief delay to ensure port closes properly
     SerialRadio.begin(newBaudRate);
     SerialRadio.addMemoryForRead(radioRxBuffer, sizeof(radioRxBuffer));
+    currentRadioBaudRate = newBaudRate;  // Update tracked baud rate
 
     LOG_INFO(EventSource::SYSTEM, "Radio baud rate updated successfully");
 }

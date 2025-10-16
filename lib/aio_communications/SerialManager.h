@@ -35,6 +35,9 @@ private:
     bool prevUSB1DTR;
     bool prevUSB2DTR;
 
+    // Current radio baud rate tracking
+    uint32_t currentRadioBaudRate;
+
 public:
     // Buffer sizes (matching pcb.h values - using existing global buffers)
     static const uint16_t GPS_BUFFER_SIZE = 128;    // GPS1rxbuffer size from pcb.h
