@@ -134,25 +134,47 @@ bool AutosteerProcessor::init() {
 
 void AutosteerProcessor::initializeFusion() {
     LOG_INFO(EventSource::AUTOSTEER, "Virtual WAS enabled - initializing VWAS system");
-    
+
     // Create fusion instance if not already created
     if (!wheelAngleFusionPtr) {
         wheelAngleFusionPtr = new WheelAngleFusion();
     }
-    
+
     // Initialize with sensor interfaces
-    // Note: We need the Keya driver, GNSS, and IMU processors
+    // Note: We need a motor with encoder feedback (Keya direct or TractorCAN with Keya function)
     KeyaCANDriver* keyaDriver = nullptr;
-    if (motorPTR && motorPTR->getType() == MotorDriverType::KEYA_CAN) {
-        keyaDriver = static_cast<KeyaCANDriver*>(motorPTR);
+    if (motorPTR) {
+        MotorDriverType motorType = motorPTR->getType();
+        LOG_INFO(EventSource::AUTOSTEER, "VWAS: Motor type = %d (KEYA_CAN=%d, TRACTOR_CAN=%d)",
+                 (int)motorType, (int)MotorDriverType::KEYA_CAN, (int)MotorDriverType::TRACTOR_CAN);
+
+        if (motorType == MotorDriverType::KEYA_CAN) {
+            keyaDriver = static_cast<KeyaCANDriver*>(motorPTR);
+            LOG_INFO(EventSource::AUTOSTEER, "VWAS: Direct Keya driver extracted");
+        } else if (motorType == MotorDriverType::TRACTOR_CAN) {
+            // TractorCANDriver can provide Keya encoder data when configured for Keya/Generic brand
+            TractorCANDriver* tractorDriver = static_cast<TractorCANDriver*>(motorPTR);
+            if (tractorDriver->hasPositionFeedback()) {
+                // Cast TractorCANDriver to KeyaCANDriver interface for encoder access
+                // This works because TractorCANDriver implements the same encoder methods
+                keyaDriver = reinterpret_cast<KeyaCANDriver*>(motorPTR);
+                LOG_INFO(EventSource::AUTOSTEER, "VWAS: Tractor CAN driver with Keya encoder extracted");
+            } else {
+                LOG_WARNING(EventSource::AUTOSTEER, "VWAS: Tractor CAN driver has no encoder feedback");
+            }
+        } else {
+            LOG_WARNING(EventSource::AUTOSTEER, "VWAS: Motor type %d has no encoder support", (int)motorType);
+        }
+    } else {
+        LOG_ERROR(EventSource::AUTOSTEER, "VWAS: motorPTR is null!");
     }
-    
+
     extern GNSSProcessor* gnssProcessorPtr;
     extern IMUProcessor imuProcessor;  // Global instance, not pointer
-    
+
     if (wheelAngleFusionPtr->init(keyaDriver, gnssProcessorPtr, &imuProcessor)) {
         LOG_INFO(EventSource::AUTOSTEER, "Virtual WAS (VWAS) initialized successfully");
-        
+
         // Load fusion config from saved values
         WheelAngleFusion::Config fusionConfig = wheelAngleFusionPtr->getConfig();
         fusionConfig.wheelbase = 2.5f;  // Default wheelbase - not yet configurable

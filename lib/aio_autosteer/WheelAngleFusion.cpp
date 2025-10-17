@@ -356,7 +356,7 @@ bool WheelAngleFusion::isHealthy() const {
 const char* WheelAngleFusion::getFusionMode() const {
     // Determine current fusion mode based on sensor availability
     // Modes from sensor_fusion_proposal.md:
-    // - "Dual GPS + IMU + Encoder" - Not applicable (no dual GPS in this implementation)
+    // - "Dual GPS + IMU + Encoder" - Dual GPS receivers with IMU
     // - "Single GPS/INS + Encoder" - GPS heading rate + encoder
     // - "IMU + Encoder" - IMU heading rate + encoder
     // - "Encoder Only" - No heading rate source available
@@ -364,6 +364,31 @@ const char* WheelAngleFusion::getFusionMode() const {
     bool hasGPS = gnssProcessor && gnssProcessor->hasGPS();
     bool hasIMU = imuProcessor && imuProcessor->hasValidData();
     bool hasEncoder = keyaDriver != nullptr;
+
+    // Check for dual GPS receivers
+    bool hasDualGPS = false;
+    if (gnssProcessor) {
+        const auto& gpsData = gnssProcessor->getData();
+        hasDualGPS = gpsData.hasDualHeading;  // Check if dual GPS heading is available
+
+        // Log sensor status periodically for debugging (every 10 seconds)
+        static uint32_t lastDebugLog = 0;
+        if (millis() - lastDebugLog > 10000) {
+            lastDebugLog = millis();
+            LOG_DEBUG(EventSource::AUTOSTEER, "VWAS sensors: GPS=%d DualGPS=%d (flag=%d) IMU=%d Encoder=%d useIMU=%d",
+                      hasGPS, hasDualGPS, gpsData.hasDualHeading, hasIMU, hasEncoder, config.useIMUHeadingRate);
+        }
+    }
+
+    // Check for dual GPS + IMU + Encoder mode (all sensors)
+    if (hasDualGPS && hasIMU && hasEncoder) {
+        return "Dual GPS + IMU + Encoder";
+    }
+
+    // Check for dual GPS + Encoder (no IMU)
+    if (hasDualGPS && hasEncoder && !config.useIMUHeadingRate) {
+        return "Dual GPS + Encoder";
+    }
 
     // Check if GPS/INS heading rate is being used
     if (hasGPS && !config.useIMUHeadingRate && hasEncoder) {
