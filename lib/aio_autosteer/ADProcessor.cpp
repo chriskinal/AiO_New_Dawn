@@ -60,17 +60,35 @@ ADProcessor* ADProcessor::getInstance()
 bool ADProcessor::init()
 {
     LOG_INFO(EventSource::AUTOSTEER, "=== A/D Processor Initialization ===");
-    
+
+    // Get HardwareManager instance and read pin assignments
+    hwManager = HardwareManager::getInstance();
+    if (!hwManager) {
+        LOG_ERROR(EventSource::AUTOSTEER, "HardwareManager not available!");
+        return false;
+    }
+
+    // Cache pin assignments from HardwareManager
+    steerPin = hwManager->getSteerPin();
+    workPin = hwManager->getWorkPin();
+    wasPin = hwManager->getWASSensorPin();
+    kickoutAPin = hwManager->getKickoutAPin();
+    kickoutDPin = hwManager->getKickoutDPin();
+    currentPin = hwManager->getCurrentPin();
+
+    LOG_DEBUG(EventSource::AUTOSTEER, "Pin assignments: STEER=%d, WORK=%d, WAS=%d, KICKOUT_A=%d, KICKOUT_D=%d, CURRENT=%d",
+              steerPin, workPin, wasPin, kickoutAPin, kickoutDPin, currentPin);
+
     // Load analog work switch settings from ConfigManager
     extern ConfigManager configManager;
     analogWorkSwitchEnabled = configManager.getAnalogWorkSwitchEnabled();
     workSwitchSetpoint = configManager.getWorkSwitchSetpoint();
     workSwitchHysteresis = configManager.getWorkSwitchHysteresis();
     invertWorkSwitch = configManager.getInvertWorkSwitch();
-    
+
     LOG_INFO(EventSource::AUTOSTEER, "Analog work switch config: Enabled=%d, SP=%d%%, H=%d%%, Inv=%d",
              analogWorkSwitchEnabled, workSwitchSetpoint, workSwitchHysteresis, invertWorkSwitch);
-    
+
     // Check for JD PWM mode
     jdPWMMode = configManager.getJDPWMEnabled();
     if (jdPWMMode) {
@@ -79,56 +97,55 @@ bool ADProcessor::init()
     } else {
         LOG_DEBUG(EventSource::AUTOSTEER, "JD_PWM_INIT: Mode DISABLED (using analog pressure mode)");
     }
-    
+
     // Configure pins with ownership tracking
-    pinMode(AD_STEER_PIN, INPUT_PULLUP);      // Steer switch with internal pullup
-    
+    pinMode(steerPin, INPUT_PULLUP);      // Steer switch with internal pullup
+
     // Configure work pin based on mode
     configureWorkPin();
-    
-    pinMode(AD_WAS_PIN, INPUT_DISABLE);       // WAS analog input (no pullup)
-    
+
+    pinMode(wasPin, INPUT_DISABLE);       // WAS analog input (no pullup)
+
     // Request ownership of appropriate kickout pin based on mode
-    HardwareManager* hwMgr = HardwareManager::getInstance();
     if (jdPWMMode) {
         // JD PWM mode uses digital pin
-        if (hwMgr->requestPinOwnership(AD_KICKOUT_D_PIN, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor-JDPWM")) {
-            pinMode(AD_KICKOUT_D_PIN, INPUT_PULLUP);
-            hwMgr->updatePinMode(AD_KICKOUT_D_PIN, INPUT_PULLUP);
-            
-            attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMRisingISR, RISING);
-            LOG_INFO(EventSource::AUTOSTEER, "JD_ENC: Mode enabled on pin %d", AD_KICKOUT_D_PIN);
+        if (hwManager->requestPinOwnership(kickoutDPin, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor-JDPWM")) {
+            pinMode(kickoutDPin, INPUT_PULLUP);
+            hwManager->updatePinMode(kickoutDPin, INPUT_PULLUP);
+
+            attachInterrupt(digitalPinToInterrupt(kickoutDPin), jdPWMRisingISR, RISING);
+            LOG_INFO(EventSource::AUTOSTEER, "JD_ENC: Mode enabled on pin %d", kickoutDPin);
         } else {
-            LOG_WARNING(EventSource::AUTOSTEER, "JD_ENC: Failed to get ownership of KICKOUT_D pin %d - may be in use by encoder", AD_KICKOUT_D_PIN);
+            LOG_WARNING(EventSource::AUTOSTEER, "JD_ENC: Failed to get ownership of KICKOUT_D pin %d - may be in use by encoder", kickoutDPin);
         }
     } else {
         // Analog pressure sensor mode uses analog pin
-        if (hwMgr->requestPinOwnership(AD_KICKOUT_A_PIN, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor")) {
-            pinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE);
-            hwMgr->updatePinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE);
+        if (hwManager->requestPinOwnership(kickoutAPin, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor")) {
+            pinMode(kickoutAPin, INPUT_DISABLE);
+            hwManager->updatePinMode(kickoutAPin, INPUT_DISABLE);
             LOG_INFO(EventSource::AUTOSTEER, "KICKOUT_A pin configured for analog pressure sensor");
         } else {
             LOG_WARNING(EventSource::AUTOSTEER, "Failed to get ownership of KICKOUT_A pin");
         }
     }
-    
-    pinMode(AD_CURRENT_PIN, INPUT_DISABLE);   // Current sensor analog input
-    
+
+    pinMode(currentPin, INPUT_DISABLE);   // Current sensor analog input
+
     // Test immediately after setting
-    LOG_DEBUG(EventSource::AUTOSTEER, "After pinMode: Pin %d digital=%d", AD_STEER_PIN, digitalRead(AD_STEER_PIN));
+    LOG_DEBUG(EventSource::AUTOSTEER, "After pinMode: Pin %d digital=%d", steerPin, digitalRead(steerPin));
     
     // Initialize Teensy ADC library
     teensyADC = new ADC();
     
     // Register ADC configuration with HardwareManager
-    
+
     // Register ADC0 config (WAS reading)
-    if (!hwMgr->requestADCConfig(HardwareManager::ADC_MODULE_0, 12, 4, "ADProcessor")) {
+    if (!hwManager->requestADCConfig(HardwareManager::ADC_MODULE_0, 12, 4, "ADProcessor")) {
         LOG_WARNING(EventSource::AUTOSTEER, "Failed to register ADC0 configuration");
     }
-    
+
     // Register ADC1 config (other sensors)
-    if (!hwMgr->requestADCConfig(HardwareManager::ADC_MODULE_1, 12, 1, "ADProcessor")) {
+    if (!hwManager->requestADCConfig(HardwareManager::ADC_MODULE_1, 12, 1, "ADProcessor")) {
         LOG_WARNING(EventSource::AUTOSTEER, "Failed to register ADC1 configuration");
     }
     
@@ -155,7 +172,7 @@ bool ADProcessor::init()
     LOG_DEBUG(EventSource::AUTOSTEER, "Pin configuration complete");
     LOG_DEBUG(EventSource::AUTOSTEER, "Initial WAS reading: %d (%.2fV)", wasRaw, getWASVoltage());
     LOG_DEBUG(EventSource::AUTOSTEER, "Work switch: %s (pin A17)", workSwitch.debouncedState ? "ON" : "OFF");
-    LOG_DEBUG(EventSource::AUTOSTEER, "Steer switch: %s (pin %d)", steerSwitch.debouncedState ? "ON" : "OFF", AD_STEER_PIN);
+    LOG_DEBUG(EventSource::AUTOSTEER, "Steer switch: %s (pin %d)", steerSwitch.debouncedState ? "ON" : "OFF", steerPin);
     
     LOG_INFO(EventSource::AUTOSTEER, "A/D Processor initialization SUCCESS");
     
@@ -180,7 +197,7 @@ void ADProcessor::process()
         lastCurrentSample = now;
         
         // Read current sensor and store in buffer
-        uint16_t reading = teensyADC->adc1->analogRead(AD_CURRENT_PIN);
+        uint16_t reading = teensyADC->adc1->analogRead(currentPin);
         
         // Simple approach from test sketch - subtract baseline offset
         float adjusted = (float)(reading - 77);  // 77 is our baseline
@@ -293,7 +310,7 @@ void ADProcessor::process()
             }
         } else {
             // Normal analog pressure sensor mode
-            kickoutAnalogRaw = analogRead(AD_KICKOUT_A_PIN);
+            kickoutAnalogRaw = analogRead(kickoutAPin);
             
             // Debug current sensor reading
             static uint32_t lastCurrentDebug = 0;
@@ -320,7 +337,7 @@ void ADProcessor::updateWAS()
 {
     // Read WAS using Teensy ADC library (4 samples averaging)
     // Use ADC1 like the old firmware
-    wasRaw = teensyADC->adc1->analogRead(AD_WAS_PIN);
+    wasRaw = teensyADC->adc1->analogRead(wasPin);
     
     // Note: The old firmware applies 3.23x scaling, but in our architecture
     // the calibration (wasOffset and wasCountsPerDegree) handles the scaling
@@ -329,12 +346,12 @@ void ADProcessor::updateWAS()
 void ADProcessor::updateSwitches()
 {
     // Simple digital read - just like old firmware
-    int steerPinRaw = digitalRead(AD_STEER_PIN);
+    int steerPinRaw = digitalRead(steerPin);
     
     bool workRaw;
     if (analogWorkSwitchEnabled) {
         // Read analog value
-        workSwitchAnalogRaw = teensyADC->adc1->analogRead(AD_WORK_PIN);
+        workSwitchAnalogRaw = teensyADC->adc1->analogRead(workPin);
         
         // Convert to percentage (0-100%)
         float currentPercent = getWorkSwitchAnalogPercent();
@@ -363,7 +380,7 @@ void ADProcessor::updateSwitches()
         }
     } else {
         // Digital mode
-        int workPinRaw = digitalRead(AD_WORK_PIN);
+        int workPinRaw = digitalRead(workPin);
         workRaw = !workPinRaw;     // Work is active LOW (pressed = 0)
     }
     
@@ -374,7 +391,7 @@ void ADProcessor::updateSwitches()
     static int lastSteerPinRaw = -1;
     if (steerPinRaw != lastSteerPinRaw) {
         LOG_DEBUG(EventSource::AUTOSTEER, "Steer pin %d: digital=%d, active=%d", 
-                      AD_STEER_PIN, steerPinRaw, steerRaw);
+                      steerPin, steerPinRaw, steerRaw);
         lastSteerPinRaw = steerPinRaw;
     }
     
@@ -515,10 +532,10 @@ void ADProcessor::configureWorkPin()
 {
     // Configure work pin based on mode
     if (analogWorkSwitchEnabled) {
-        pinMode(AD_WORK_PIN, INPUT_DISABLE);   // Analog input (no pullup)
+        pinMode(workPin, INPUT_DISABLE);   // Analog input (no pullup)
         LOG_INFO(EventSource::AUTOSTEER, "Work switch configured for ANALOG input");
     } else {
-        pinMode(AD_WORK_PIN, INPUT_PULLUP);    // Digital with pullup
+        pinMode(workPin, INPUT_PULLUP);    // Digital with pullup
         LOG_INFO(EventSource::AUTOSTEER, "Work switch configured for DIGITAL input");
     }
 }
@@ -572,22 +589,22 @@ void ADProcessor::setJDPWMMode(bool enabled)
     
     if (enabled) {
         // Release analog pin and acquire digital pin
-        hwMgr->releasePinOwnership(AD_KICKOUT_A_PIN, HardwareManager::OWNER_ADPROCESSOR);
+        hwMgr->releasePinOwnership(kickoutAPin, HardwareManager::OWNER_ADPROCESSOR);
         
-        if (hwMgr->requestPinOwnership(AD_KICKOUT_D_PIN, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor-JDPWM")) {
-            pinMode(AD_KICKOUT_D_PIN, INPUT_PULLUP);
-            hwMgr->updatePinMode(AD_KICKOUT_D_PIN, INPUT_PULLUP);
-            attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMRisingISR, RISING);
-            LOG_INFO(EventSource::AUTOSTEER, "JD_ENC: Mode ENABLED on pin %d", AD_KICKOUT_D_PIN);
+        if (hwMgr->requestPinOwnership(kickoutDPin, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor-JDPWM")) {
+            pinMode(kickoutDPin, INPUT_PULLUP);
+            hwMgr->updatePinMode(kickoutDPin, INPUT_PULLUP);
+            attachInterrupt(digitalPinToInterrupt(kickoutDPin), jdPWMRisingISR, RISING);
+            LOG_INFO(EventSource::AUTOSTEER, "JD_ENC: Mode ENABLED on pin %d", kickoutDPin);
         }
     } else {
         // Release digital pin and acquire analog pin
-        detachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN));
-        hwMgr->releasePinOwnership(AD_KICKOUT_D_PIN, HardwareManager::OWNER_ADPROCESSOR);
+        detachInterrupt(digitalPinToInterrupt(kickoutDPin));
+        hwMgr->releasePinOwnership(kickoutDPin, HardwareManager::OWNER_ADPROCESSOR);
         
-        if (hwMgr->requestPinOwnership(AD_KICKOUT_A_PIN, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor")) {
-            pinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE);
-            hwMgr->updatePinMode(AD_KICKOUT_A_PIN, INPUT_DISABLE);
+        if (hwMgr->requestPinOwnership(kickoutAPin, HardwareManager::OWNER_ADPROCESSOR, "ADProcessor")) {
+            pinMode(kickoutAPin, INPUT_DISABLE);
+            hwMgr->updatePinMode(kickoutAPin, INPUT_DISABLE);
             LOG_INFO(EventSource::AUTOSTEER, "JD_ENC: Mode DISABLED - analog pressure mode restored");
         }
     }
@@ -611,7 +628,7 @@ void ADProcessor::jdPWMRisingISR()
         
         instance->jdPWMPrevRiseTime = instance->jdPWMRiseTime;
         instance->jdPWMRiseTime = nowMicros;
-        attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMFallingISR, FALLING);
+        attachInterrupt(digitalPinToInterrupt(instance->kickoutDPin), jdPWMFallingISR, FALLING);
         
         // Track interrupt rate for diagnostics
         static uint32_t riseCount = 0;
@@ -634,6 +651,6 @@ void ADProcessor::jdPWMFallingISR()
     if (instance) {
         uint32_t fallTime = micros();
         instance->jdPWMDutyTime = fallTime - instance->jdPWMRiseTime;
-        attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMRisingISR, RISING);
+        attachInterrupt(digitalPinToInterrupt(instance->kickoutDPin), jdPWMRisingISR, RISING);
     }
 }
