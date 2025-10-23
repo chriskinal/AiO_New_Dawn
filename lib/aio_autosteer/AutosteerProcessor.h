@@ -19,10 +19,7 @@ class KickoutMonitor;
 class AutosteerProcessor {
 private:
     static AutosteerProcessor* instance;
-    
-    // Pin definitions
-    static constexpr uint8_t BUTTON_PIN = 2;  // Physical button on pin 2
-    
+
     // Private constructor for singleton
     AutosteerProcessor();
     
