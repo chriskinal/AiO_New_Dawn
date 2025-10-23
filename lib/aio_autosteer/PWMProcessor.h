@@ -49,8 +49,8 @@ public:
 
 private:
     // Pin assignment from pcb.h
-    uint8_t SPEED_PULSE_PIN;      // D33 - actual speed pulse output, but get pin from HardwareManager
-    uint8_t SPEED_PULSE_LED_PIN;  // D37 - output for LED at 1/10 speed pulse frequency, but get pin from HardwareManager
+    uint8_t SPEED_PULSE_PIN;      // get pin from HardwareManager during init()
+    uint8_t SPEED_PULSE_LED_PIN;  // get pin from HardwareManager during init()
     
     // PWM parameters
     float pulseFrequency;      // Hz
