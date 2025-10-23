@@ -3,15 +3,20 @@
 
 #include <Arduino.h>
 
+// Forward declaration
+class HardwareManager;
+
 /**
  * PWMProcessor - PWM Output Processor for Autosteer
- * 
+ *
  * Handles:
  * - Speed pulse output for odometry/speed sensing
  *   Pin D36 with open-collector output (Q5 transistor)
  *   Output is inverted: HIGH from Teensy = LOW output
  * - Configurable frequency and duty cycle
  * - Can generate pulses based on speed input
+ *
+ * Pin assignments are read from HardwareManager during init()
  */
 class PWMProcessor {
 public:
@@ -48,10 +53,13 @@ public:
     static PWMProcessor* getInstance();
 
 private:
-    // Pin assignment from pcb.h
-    static constexpr uint8_t SPEED_PULSE_PIN = 33;      // D33 - actual speed pulse output
-    static constexpr uint8_t SPEED_PULSE_LED_PIN = 37;  // D37 - output for LED at 1/10 speed pulse frequency
-    
+    // HardwareManager reference for pin access
+    HardwareManager* hwManager;
+
+    // Pin assignments - cached from HardwareManager during init()
+    uint8_t speedPulsePin;      // Actual speed pulse output
+    uint8_t speedPulseLEDPin;   // LED output at 1/10 speed pulse frequency
+
     // PWM parameters
     float pulseFrequency;      // Hz
     float pulseDuty;           // 0.0-1.0
