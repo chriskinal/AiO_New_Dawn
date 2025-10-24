@@ -80,6 +80,13 @@ bool ADProcessor::init()
         LOG_DEBUG(EventSource::AUTOSTEER, "JD_PWM_INIT: Mode DISABLED (using analog pressure mode)");
     }
     
+    AD_STEER_PIN = HardwareManager::getInstance()->getSteerPin();
+    AD_WORK_PIN = HardwareManager::getInstance()->getWorkPin();
+    AD_WAS_PIN = HardwareManager::getInstance()->getWASSensorPin();
+    AD_KICKOUT_A_PIN = HardwareManager::getInstance()->getKickoutAPin();
+    AD_KICKOUT_D_PIN = HardwareManager::getInstance()->getKickoutDPin();
+    AD_CURRENT_PIN = HardwareManager::getInstance()->getCurrentPin();
+
     // Configure pins with ownership tracking
     pinMode(AD_STEER_PIN, INPUT_PULLUP);      // Steer switch with internal pullup
     
@@ -611,7 +618,8 @@ void ADProcessor::jdPWMRisingISR()
         
         instance->jdPWMPrevRiseTime = instance->jdPWMRiseTime;
         instance->jdPWMRiseTime = nowMicros;
-        attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMFallingISR, FALLING);
+        attachInterrupt(digitalPinToInterrupt(HardwareManager::getInstance()->getKickoutDPin()), jdPWMFallingISR, FALLING);
+        // for some reason this instance of attachInterrupt needs a static pin varaible
         
         // Track interrupt rate for diagnostics
         static uint32_t riseCount = 0;
@@ -634,6 +642,7 @@ void ADProcessor::jdPWMFallingISR()
     if (instance) {
         uint32_t fallTime = micros();
         instance->jdPWMDutyTime = fallTime - instance->jdPWMRiseTime;
-        attachInterrupt(digitalPinToInterrupt(AD_KICKOUT_D_PIN), jdPWMRisingISR, RISING);
+        attachInterrupt(digitalPinToInterrupt(HardwareManager::getInstance()->getKickoutDPin()), jdPWMRisingISR, RISING);
+        // for some reason this instance of attachInterrupt needs a static pin varaible
     }
 }
