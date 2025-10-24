@@ -3,6 +3,7 @@
 
 // AiO New Dawn firmware version
 #define FIRMWARE_VERSION "1.0.113-beta" // Fix white-on-white text visibility in web UI
+#define BOARD_VERSION "AiO-v4.x"
 
 // Teensy board type for OTA identification
 #define TEENSY_BOARD_TYPE "Teensy41"

@@ -78,6 +78,7 @@ const char TOUCH_FRIENDLY_HOME_PAGE[] PROGMEM = R"rawliteral(
         
         <div class="info">
             <p>Firmware: <span id="firmwareVersion">Loading...</span></p>
+            <p>Board Type: AiO v4.x - Teensy 4.1</p>
             <p>WebSocket: <span id="wsStatus">Disconnected</span> | <span id="telemetryRate">0</span> Hz</p>
         </div>
     </div>

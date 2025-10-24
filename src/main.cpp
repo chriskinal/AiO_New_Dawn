@@ -233,6 +233,8 @@ void setup()
 
   Serial.print("\r\n\n=== Teensy 4.1 AiO-v4.x New Dawn v");
   Serial.print(FIRMWARE_VERSION);
+  Serial.print(" === ");
+  Serial.print(BOARD_VERSION);
   Serial.print(" ===\r\n");
   Serial.print("Initializing subsystems...");
 
@@ -451,8 +453,8 @@ void setup()
   }
 
   // Initialize Little Dawn Interface
-  esp32Interface.init();
-  LOG_INFO(EventSource::SYSTEM, "ESP32Interface initialized");
+  //esp32Interface.init();
+  //LOG_INFO(EventSource::SYSTEM, "ESP32Interface initialized");
 
   // PGN 201 handling is now done by QNetworkBase
 

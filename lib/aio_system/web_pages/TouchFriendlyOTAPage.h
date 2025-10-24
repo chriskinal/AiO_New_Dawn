@@ -258,7 +258,7 @@ const char TOUCH_FRIENDLY_OTA_PAGE[] PROGMEM = R"rawliteral(
         </div>
         
         <div class="board-info">
-            <div>Board Type: Teensy 4.1</div>
+            <div>Board Type: AiO v4.x - Teensy 4.1</div>
             <div>Current Version: <span id="currentVersion">Loading...</span></div>
         </div>
         

@@ -28,8 +28,8 @@
 // ANALOG PINS - Owner: ADProcessor
 const uint8_t WAS_SENSOR_PIN = A0;     // Wheel Angle Sensor
 const uint8_t CURRENT_PIN = A17;       // Motor current sensor
-const uint8_t KICKOUT_A_PIN = A10;              // Pressure sensor (analog) / Encoder A (digital)
-const uint8_t WORK_PIN = 34;                    // Work switch input
+const uint8_t KICKOUT_A_PIN = A10;     // Pressure sensor (analog) / Encoder A (digital)
+const uint8_t WORK_PIN = 34;           // Work switch input
 
 // DIGITAL PINS - Various owners
 const uint8_t SPEEDPULSE_PIN = 36;     // Owner: PWMProcessor

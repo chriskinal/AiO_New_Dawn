@@ -182,7 +182,7 @@ const char SIMPLE_OTA_UPDATE_PAGE_FIXED[] PROGMEM = R"rawliteral(
         <h1>OTA Firmware Update</h1>
         
         <div class='status'>
-            <p>Board Type: Teensy 4.1</p>
+            <p>Board Type: AiO v4.x - Teensy 4.1</p>
         </div>
         
         <div class='warning'>
