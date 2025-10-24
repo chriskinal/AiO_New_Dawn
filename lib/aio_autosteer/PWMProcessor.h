@@ -11,8 +11,8 @@ class HardwareManager;
  *
  * Handles:
  * - Speed pulse output for odometry/speed sensing
- *   Pin D36 with open-collector output (Q5 transistor)
- *   Output is inverted: HIGH from Teensy = LOW output
+ *   With open-collector output (Q11 fet)
+ *   Output is inverted: HIGH from Teensy = LOW output from Q11 which activates an optocoupler to connect the Speed+ & Speed- pins to each other
  * - Configurable frequency and duty cycle
  * - Can generate pulses based on speed input
  *

@@ -67,8 +67,8 @@ bool PWMProcessor::init()
         LOG_WARNING(EventSource::AUTOSTEER, "Failed to set initial Speed Pulse LED PWM frequency");
     }
    
-    LOG_DEBUG(EventSource::AUTOSTEER, "Speed pulse pin (D33) configured");
-    LOG_DEBUG(EventSource::AUTOSTEER, "Speed pulse LED pin (D37) configured");
+    LOG_DEBUG(EventSource::AUTOSTEER, "Speed pulse pin (D%d) configured", speedPulsePin);
+    LOG_DEBUG(EventSource::AUTOSTEER, "Speed pulse LED pin (D%d) configured", speedPulseLEDPin);
     LOG_DEBUG(EventSource::AUTOSTEER, "PWM resolution: 12-bit");
     LOG_DEBUG(EventSource::AUTOSTEER, "Output type: Open collector (inverted)");
     LOG_INFO(EventSource::AUTOSTEER, "PWM Processor initialization SUCCESS");

@@ -33,7 +33,7 @@ const uint8_t WORK_PIN = A17;          // Work switch input
 
 // DIGITAL PINS - Various owners
 const uint8_t SPEEDPULSE_PIN = 33;     // Owner: PWMProcessor
-const uint8_t SPEEDPULSE10_PIN = 37;   // Currently unused
+const uint8_t SPEEDPULSE10_PIN = 37;   // Owner: PWMProcessor
 const uint8_t BUZZER = 36;             // Owner: HardwareManager
 const uint8_t SLEEP_PIN = 4;           // Owner: MotorDriverInterface
 const uint8_t PWM1_PIN = 5;            // Owner: PWMMotorDriver
