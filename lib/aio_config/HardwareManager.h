@@ -32,9 +32,9 @@
 #define WORK_PIN A17          // Work switch input
 
 // DIGITAL PINS - Various owners
-#define SPEEDPULSE_PIN 33     // used by PWMProcessor, read during init
-#define SPEEDPULSE10_PIN 37   // used by PWMProcessor, read during init
-#define BUZZER 36             // used by HardwareManager
+#define SPEEDPULSE_PIN 33     // Owner: PWMProcessor
+#define SPEEDPULSE10_PIN 37   // Owner: PWMProcessor
+#define BUZZER 36             // Owner: HardwareManager
 #define SLEEP_PIN 4           // Owner: MotorDriverInterface
 #define PWM1_PIN 5            // Owner: PWMMotorDriver
 #define PWM2_PIN 6            // Owner: PWMMotorDriver
