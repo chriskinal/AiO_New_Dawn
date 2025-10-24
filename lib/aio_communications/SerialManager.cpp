@@ -6,7 +6,7 @@
 SerialManager *SerialManager::instance = nullptr;
 
 SerialManager::SerialManager()
-    : isInitialized(false), serialIMU(&Serial4), prevUSB1DTR(false), prevUSB2DTR(false)
+    : isInitialized(false), serialIMU(&Serial5), prevUSB1DTR(false), prevUSB2DTR(false)
 {
     instance = this;
 }
@@ -71,21 +71,21 @@ bool SerialManager::initializeSerialPorts()
     SerialRadio.addMemoryForRead(radioRxBuffer, sizeof(radioRxBuffer));
 
     // RS232 Serial - use class member buffer
-    SerialRS232.begin(BAUD_RS232);
-    SerialRS232.addMemoryForWrite(rs232TxBuffer, sizeof(rs232TxBuffer));
+    //SerialRS232.begin(BAUD_RS232);
+    //SerialRS232.addMemoryForWrite(rs232TxBuffer, sizeof(rs232TxBuffer));
 
     // ESP32 Serial - use class member buffers
-    SerialESP32.begin(BAUD_ESP32);
-    SerialESP32.addMemoryForRead(esp32RxBuffer, sizeof(esp32RxBuffer));
-    SerialESP32.addMemoryForWrite(esp32TxBuffer, sizeof(esp32TxBuffer));
+    //SerialESP32.begin(BAUD_ESP32);
+    //SerialESP32.addMemoryForRead(esp32RxBuffer, sizeof(esp32RxBuffer));
+    //SerialESP32.addMemoryForWrite(esp32TxBuffer, sizeof(esp32TxBuffer));
 
     // IMU Serial
     serialIMU->begin(BAUD_IMU);
 
     LOG_DEBUG(EventSource::SYSTEM, "SerialGPS1/GPS2: %i baud", BAUD_GPS);
     LOG_DEBUG(EventSource::SYSTEM, "SerialRadio: %lu baud", radioBaud);
-    LOG_DEBUG(EventSource::SYSTEM, "SerialRS232: %i baud", BAUD_RS232);
-    LOG_DEBUG(EventSource::SYSTEM, "SerialESP32: %i baud", BAUD_ESP32);
+    //LOG_DEBUG(EventSource::SYSTEM, "SerialRS232: %i baud", BAUD_RS232);
+    //LOG_DEBUG(EventSource::SYSTEM, "SerialESP32: %i baud", BAUD_ESP32);
     LOG_DEBUG(EventSource::SYSTEM, "SerialIMU: %i baud", BAUD_IMU);
 
     return true;
@@ -173,12 +173,12 @@ void SerialManager::clearSerialBuffers()
 
 void SerialManager::sendToRS232(uint8_t *data, uint16_t length)
 {
-    SerialRS232.write(data, length);
+    //SerialRS232.write(data, length);
 }
 
 void SerialManager::sendToESP32(uint8_t *data, uint16_t length)
 {
-    SerialESP32.write(data, length);
+    //SerialESP32.write(data, length);
 }
 
 void SerialManager::processESP32PGN(uint8_t *data, uint8_t length)

@@ -228,10 +228,10 @@ void taskKickoutSendPGN250() {
 
 void setup()
 {
-  delay(5000); // delay for time to start monitor
+  //delay(5000); // delay for time to start monitor
   Serial.begin(115200);
 
-  Serial.print("\r\n\n=== Teensy 4.1 AiO-NG-v6 New Dawn v");
+  Serial.print("\r\n\n=== Teensy 4.1 AiO-v4.x New Dawn v");
   Serial.print(FIRMWARE_VERSION);
   Serial.print(" ===\r\n");
   Serial.print("Initializing subsystems...");

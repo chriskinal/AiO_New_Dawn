@@ -5,10 +5,11 @@
 
 // Serial port definitions (self-contained, no pcb.h dependency)
 #define SerialRadio Serial3
-#define SerialGPS1 Serial5
-#define SerialGPS2 Serial8
-#define SerialRS232 Serial7
-#define SerialESP32 Serial2
+#define SerialGPS1 Serial7
+#define SerialGPS2 Serial2
+#define SerialRS232 Serial6 // TX6 is actually Pressure input A10
+#define SerialESP32 Serial8 // RX8 is actually Work input D34
+// SerialIMU is Serial5
 
 // GPS and IMU type enumerations removed - all detection moved to NAVProcessor
 
