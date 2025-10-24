@@ -13,9 +13,9 @@ class HardwareManager;
  * Handles:
  * - WAS (Wheel Angle Sensor) reading from Teensy ADC
  *   Note: WAS outputs 0-5V but Teensy ADC max is 3.3V
- *   PCB has 10k/10k voltage divider (R46/R48) = 2:1 ratio
- *   0-5V sensor -> 0-2.5V ADC, 2.5V center -> 1.25V ADC
- *   ADC value at center = 1553 (1.25V/3.3V * 4095)
+ *   PCB has 3k/2k voltage divider (R57/R58)
+ *   0-5V sensor -> 0-3.3V ADC, 2.5V center -> 1.65V ADC
+ *   ADC value at center = 2048 (1.65V/3.3V * 4095)
  * - Work switch input with debouncing
  * - Steer switch input with debouncing
  *
