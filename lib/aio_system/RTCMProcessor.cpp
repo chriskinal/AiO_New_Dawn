@@ -4,8 +4,7 @@
 #include "SerialManager.h"
 #include "EventLogger.h"
 
-// Just declare what we need, don't include pcb.h
-#define SerialGPS1 Serial7 // From pcb.h
+// SerialGPS1 is defined in SerialManager.h
 
 // External LED manager
 extern LEDManagerFSM ledManagerFSM;
