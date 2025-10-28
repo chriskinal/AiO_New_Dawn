@@ -25,6 +25,7 @@ RTCMProcessor::~RTCMProcessor()
 {
     instance = nullptr;
 }
+
 void RTCMProcessor::init(HardwareSerialIMXRT& _SerialGPS1, HardwareSerialIMXRT& _SerialRadio)
 {
     if (instance == nullptr)

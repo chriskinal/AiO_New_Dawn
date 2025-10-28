@@ -21,23 +21,14 @@ public:
     static RTCMProcessor *instance;
 
 private:
-    //RTCMProcessor();
     RTCMProcessor(HardwareSerialIMXRT& _SerialGPS1, HardwareSerialIMXRT& _SerialRadio);
     ~RTCMProcessor();
 
     HardwareSerialIMXRT& gpsSerial;
     HardwareSerialIMXRT& radioSerial;
-    //Stream& gpsSerial;
-    //Stream& radioSerial;
 
 public:
     // Get singleton instance
-    /*static RTCMProcessor* getInstance(HardwareSerialIMXRT& _SerialGPS1, HardwareSerialIMXRT& _SerialRadio) {
-        if (instance == nullptr) {
-            instance = new RTCMProcessor(_SerialGPS1, _SerialRadio);
-        }
-        return instance;
-    }*/
     static RTCMProcessor* getInstance() {
         return instance;
     }
