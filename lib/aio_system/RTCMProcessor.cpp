@@ -1,10 +1,7 @@
 #include "RTCMProcessor.h"
 #include "QNetworkBase.h"
 #include "LEDManagerFSM.h"
-#include "SerialManager.h"
 #include "EventLogger.h"
-
-// SerialGPS1 is defined in SerialManager.h
 
 // External LED manager
 extern LEDManagerFSM ledManagerFSM;
@@ -18,7 +15,8 @@ using namespace qindesign::network;
 // Static instance pointer
 RTCMProcessor *RTCMProcessor::instance = nullptr;
 
-RTCMProcessor::RTCMProcessor()
+RTCMProcessor::RTCMProcessor(HardwareSerialIMXRT& _SerialGPS1, HardwareSerialIMXRT& _SerialRadio) 
+    : gpsSerial(_SerialGPS1), radioSerial(_SerialRadio)
 {
     instance = this;
 }
@@ -27,12 +25,11 @@ RTCMProcessor::~RTCMProcessor()
 {
     instance = nullptr;
 }
-
-void RTCMProcessor::init()
+void RTCMProcessor::init(HardwareSerialIMXRT& _SerialGPS1, HardwareSerialIMXRT& _SerialRadio)
 {
     if (instance == nullptr)
     {
-        new RTCMProcessor();
+        instance = new RTCMProcessor(_SerialGPS1, _SerialRadio);
     }
 }
 
@@ -49,7 +46,7 @@ void RTCMProcessor::processRTCM(const uint8_t *data, size_t len, const IPAddress
     if (len >= 5)
     {
         // Write directly to serial port
-        SerialGPS1.write(data, len);
+        gpsSerial.write(data, len);
 
         // Pulse GPS LED blue for RTCM packet
         ledManagerFSM.pulseRTCM();
@@ -79,7 +76,7 @@ void RTCMProcessor::processRadioRTCM()
     static uint32_t lastDataTime = 0;
     static bool radioDataActive = false;
     // Simple direct forwarding - exactly like the working test code
-    if (SerialRadio.available())
+    if (radioSerial.available())
     {
         // Track activity
         if (!radioDataActive)
@@ -91,7 +88,7 @@ void RTCMProcessor::processRadioRTCM()
         lastDataTime = millis();
 
         // Forward one byte per call - exactly like tester's working code
-        SerialGPS1.write(SerialRadio.read());
+        gpsSerial.write(radioSerial.read());
         radioByteCount++;
         forwardedByteCount++;
 

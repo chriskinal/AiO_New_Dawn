@@ -303,7 +303,7 @@ void setup()
   initializeGlobalCANBuses();
   
   // Initialize RTCMProcessor
-  RTCMProcessor::init();
+  RTCMProcessor::init(SerialGPS1, SerialRadio);
   LOG_INFO(EventSource::SYSTEM, "RTCMProcessor initialized");
 
   // Initialize HardwareManager
