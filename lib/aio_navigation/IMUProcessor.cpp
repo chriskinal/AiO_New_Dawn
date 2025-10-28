@@ -11,7 +11,7 @@ IMUProcessor *IMUProcessor::instance = nullptr;
 
 IMUProcessor::IMUProcessor()
     : serialMgr(nullptr), detectedType(IMUType::NONE), isInitialized(false),
-      bnoParser(nullptr), imuSerial(&Serial4), tm171Parser(nullptr),
+      bnoParser(nullptr), imuSerial(&Serial5), tm171Parser(nullptr),
       timeSinceLastPacket(0)
 {
     instance = this;

@@ -4,7 +4,7 @@
 #include "Arduino.h"
 
 // Serial port definitions (self-contained, no pcb.h dependency)
-#define SerialRadio Serial3
+#define SerialRadio Serial3 // TX3 is A0 used for WAS input
 #define SerialGPS1 Serial7
 #define SerialGPS2 Serial2
 #define SerialRS232 Serial6 // TX6 is actually Pressure input A10

@@ -1104,7 +1104,7 @@ void SimpleWebManager::handleUM98xRead(EthernetClient& client) {
     
     if (!managerInitialized) {
         // Initialize with GPS1 serial port (Serial5)
-        if (!um98xManager.init(&Serial5)) {
+        if (!um98xManager.init(&Serial7)) {
             StaticJsonDocument<128> doc;
             doc["success"] = false;
             doc["error"] = "Failed to initialize UM98x manager";
@@ -1164,7 +1164,7 @@ void SimpleWebManager::handleUM98xWrite(EthernetClient& client) {
     
     if (!managerInitialized) {
         // Initialize with GPS1 serial port (Serial5)
-        if (!um98xManager.init(&Serial5)) {
+        if (!um98xManager.init(&Serial7)) {
             StaticJsonDocument<128> responseDoc;
             responseDoc["success"] = false;
             responseDoc["error"] = "Failed to initialize UM98x manager";
