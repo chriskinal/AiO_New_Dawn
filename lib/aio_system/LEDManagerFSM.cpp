@@ -86,10 +86,10 @@ bool LEDManagerFSM::init() {
     LOG_INFO(EventSource::SYSTEM, "Initializing LED Manager (FSM)");
     
     // Create PCA9685 driver - explicitly specify Wire like NG-V6
-    pwm = new Adafruit_PWMServoDriver(LED_CONTROLLER_ADDRESS, Wire);
-    
+    pwm = new Adafruit_PWMServoDriver(PCA9685_ADDRESS, Wire);
+
     // Check if PCA9685 is present
-    Wire.beginTransmission(LED_CONTROLLER_ADDRESS);
+    Wire.beginTransmission(PCA9685_ADDRESS);
     uint8_t error = Wire.endTransmission();
     if (error != 0) {
         LOG_ERROR(EventSource::SYSTEM, "PCA9685 not found at 0x70 (error=%d)", error);

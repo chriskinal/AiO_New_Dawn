@@ -4,6 +4,7 @@
 
 #include <Arduino.h>
 #include <Adafruit_PWMServoDriver.h>
+#include "I2CManager.h"  // For PCA9685_ADDRESS
 
 class LEDManagerFSM {
 public:
@@ -96,10 +97,9 @@ public:
     void pulseButton();    // 50ms blue pulse for button press
     
 private:
-    // PCA9685 controller
+    // PCA9685 controller (address defined in I2CManager.h as PCA9685_ADDRESS)
     Adafruit_PWMServoDriver* pwm;
-    static const uint8_t LED_CONTROLLER_ADDRESS = 0x70;
-    
+
     // LED channel assignments on PCA9685
     static const uint8_t LED_PINS[4][3];  // [LED_ID][R,G,B]
     

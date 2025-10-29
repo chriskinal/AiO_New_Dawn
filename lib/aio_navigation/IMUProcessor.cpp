@@ -4,6 +4,7 @@
 #include "EventLogger.h"
 #include "QNetworkBase.h"
 #include "ConfigManager.h"
+#include "SerialManager.h"
 
 
 // Static instance pointer
@@ -11,7 +12,7 @@ IMUProcessor *IMUProcessor::instance = nullptr;
 
 IMUProcessor::IMUProcessor()
     : serialMgr(nullptr), detectedType(IMUType::NONE), isInitialized(false),
-      bnoParser(nullptr), imuSerial(&Serial5), tm171Parser(nullptr),
+      bnoParser(nullptr), imuSerial(&SerialIMU), tm171Parser(nullptr),
       timeSinceLastPacket(0)
 {
     instance = this;
