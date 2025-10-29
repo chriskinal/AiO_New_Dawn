@@ -428,6 +428,36 @@ void AutosteerProcessor::process() {
                  kickoutMonitor ? kickoutMonitor->hasKickout() : 0);
 
         if (guidanceActive) {
+            // SAFETY CHECK: Verify motor/valve ready before engagement
+            if (motorPTR && motorPTR->getType() == MotorDriverType::TRACTOR_CAN) {
+                TractorCANDriver* tractorCAN = static_cast<TractorCANDriver*>(motorPTR);
+                if (tractorCAN) {
+                    TractorBrand brand = tractorCAN->getCurrentBrand();
+                    bool motorReady = false;
+
+                    if (brand == TractorBrand::GENERIC) {
+                        // Keya motor - check heartbeat validity
+                        motorReady = tractorCAN->isHeartbeatValid();
+                    } else {
+                        // Tractor CAN valve - check valve ready status
+                        motorReady = tractorCAN->isValveReady();
+                    }
+
+                    // Block engagement if not ready
+                    if (!motorReady) {
+                        const char* message = getTractorValveMessage(brand);
+                        MessageBuilder::sendHardwarePopup(message, 5, 1);
+
+                        LOG_WARNING(EventSource::AUTOSTEER,
+                            "Autosteer engagement blocked via AgOpenGPS - motor/valve not ready (brand: %d)",
+                            static_cast<int>(brand));
+
+                        // Don't activate steering - keep it disarmed
+                        return;
+                    }
+                }
+            }
+
             // Guidance turned ON in AgOpenGPS
             steerState = 0;  // Activate steering
             LOG_INFO(EventSource::AUTOSTEER, "Autosteer ARMED via AgOpenGPS (OSB)");
