@@ -171,7 +171,6 @@ void CommandHandler::handleCommand(char cmd) {
 
         case 'm':  // Start buffer Monitoring
         case 'M':
-            Serial.printf("\r\nStarting serial buffer monitoring...\r\n");
             {
                 extern SerialManager serialManager;
                 serialManager.startBufferMonitoring();
