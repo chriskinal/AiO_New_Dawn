@@ -515,6 +515,7 @@ void setup()
   scheduler.addTask(SimpleScheduler::HZ_10, []{ serialManager.updateBufferStats(); }, "Buffer Stats");
   scheduler.addTask(SimpleScheduler::HZ_10, []{ CommandHandler::getInstance()->process(); }, "CommandHandler");
 
+  // the scheduler is counting tasks per group, why not just report that?
   LOG_INFO(EventSource::SYSTEM, "SimpleScheduler initialized with %d tasks",
            5 + 8 + 3 + 1 + 5); // EVERY_LOOP + 100Hz + 50Hz + 10Hz
 
