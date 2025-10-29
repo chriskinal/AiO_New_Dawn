@@ -178,6 +178,18 @@ public:
 
     // Lindner-specific methods
     bool isLindnerEngaged() const { return lindnerEngaged; }
+
+    // Valve ready status methods (for engagement safety check)
+    bool isValveReady() const { return steerReady; }
+    uint32_t getTimeSinceLastValveReady() const {
+        return steerReady ? 0 : (millis() - lastSteerReadyTime);
+    }
+
+    // Heartbeat validity (for Keya/GENERIC brand)
+    bool isHeartbeatValid() const { return heartbeatValid; }
+
+    // Brand identification
+    TractorBrand getCurrentBrand() const { return static_cast<TractorBrand>(config.brand); }
 };
 
 #endif // TRACTOR_CAN_DRIVER_H
