@@ -204,9 +204,9 @@ void taskLEDUpdate() {
   ledManagerFSM.updateAll();
 }
 
-void taskBufferStats() {
+/*void taskBufferStats() {
   serialManager.updateBufferStats();
-}
+}*/
 
 void taskNetworkCheck() {
   EventLogger::getInstance()->checkNetworkReady();
@@ -231,11 +231,11 @@ void setup()
   //delay(5000); // delay for time to start monitor
   Serial.begin(115200);
 
-  Serial.print("\r\n\n=== Teensy 4.1 AiO-v4.x New Dawn v");
+  Serial.print("\r\n\n=== New Dawn v");
   Serial.print(FIRMWARE_VERSION);
   Serial.print(" === ");
   Serial.print(BOARD_VERSION);
-  Serial.print(" ===\r\n");
+  Serial.print("(Teensy 4.1 w/ETH) ===\r\n");
   Serial.print("Initializing subsystems...");
 
   // Initialize ConfigManager FIRST - it has no dependencies
@@ -490,30 +490,14 @@ void setup()
   scheduler.addTask(SimpleScheduler::EVERY_LOOP, taskGPS2Serial, "GPS2 Serial");
 
   // Add these as EVERY_LOOP for now (they have no timing currently)
-  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    imuProcessor.process();
-  }, "IMU");
-  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    adProcessor.process();
-  }, "ADProcessor");
-  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    esp32Interface.process();
-  }, "ESP32");
-  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    RTCMProcessor::getInstance()->process();
-  }, "RTCM");
-  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    EncoderProcessor::getInstance()->process();
-  }, "Encoder");
-  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    MachineProcessor::getInstance()->process();
-  }, "Machine");
-  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    pwmProcessor.process();
-  }, "PWM");
-  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    KickoutMonitor::getInstance()->process();
-  }, "Kickout Monitor");
+  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{ imuProcessor.process(); }, "IMU");
+  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{ adProcessor.process(); }, "ADProcessor");
+  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{ esp32Interface.process(); }, "ESP32");
+  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{ RTCMProcessor::getInstance()->process(); }, "RTCM");
+  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{ EncoderProcessor::getInstance()->process(); }, "Encoder");
+  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{ MachineProcessor::getInstance()->process(); }, "Machine");
+  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{ pwmProcessor.process(); }, "PWM");
+  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{ KickoutMonitor::getInstance()->process(); }, "Kickout Monitor");
 
   // Add 100Hz tasks (critical timing)
   scheduler.addTask(SimpleScheduler::HZ_100, taskAutosteer, "Autosteer");
@@ -528,14 +512,13 @@ void setup()
   scheduler.addTask(SimpleScheduler::HZ_10, taskNetworkCheck, "Network Check");
   scheduler.addTask(SimpleScheduler::HZ_10, taskNAVProcess, "NAV Process");
   scheduler.addTask(SimpleScheduler::HZ_10, taskKickoutSendPGN250, "PGN250 Send");
-  // Buffer stats disabled - only enable when actually monitoring
-  // scheduler.addTask(SimpleScheduler::HZ_10, taskBufferStats, "Buffer Stats");
-  scheduler.addTask(SimpleScheduler::HZ_10, []{
-    CommandHandler::getInstance()->process();
-  }, "CommandHandler");
+  scheduler.addTask(SimpleScheduler::HZ_10, []{ serialManager.updateBufferStats(); }, "Buffer Stats");
+  scheduler.addTask(SimpleScheduler::HZ_10, []{ CommandHandler::getInstance()->process(); }, "CommandHandler");
 
   LOG_INFO(EventSource::SYSTEM, "SimpleScheduler initialized with %d tasks",
            5 + 8 + 3 + 1 + 5); // EVERY_LOOP + 100Hz + 50Hz + 10Hz
+
+  serialManager.startBufferMonitoring();
 
   // Display access information
   localIP = Ethernet.localIP();  // Reuse existing variable
