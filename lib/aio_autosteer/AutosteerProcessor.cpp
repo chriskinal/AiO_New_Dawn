@@ -13,6 +13,7 @@
 #include "WheelAngleFusion.h"
 #include "MotorDriverManager.h"
 #include "KickoutMonitor.h"
+#include "MessageBuilder.h"
 #include <cmath>  // For sin() function
 
 // External network function
@@ -33,6 +34,31 @@ AutosteerProcessor* autosteerPTR = nullptr;
 
 // Singleton instance
 AutosteerProcessor* AutosteerProcessor::instance = nullptr;
+
+// Helper function: Get brand-specific valve/motor not ready message
+static const char* getTractorValveMessage(TractorBrand brand) {
+    switch (brand) {
+        case TractorBrand::VALTRA_MASSEY:
+            return "Valtra/MF steering valve not ready! Check CAN connection.";
+        case TractorBrand::FENDT:
+        case TractorBrand::FENDT_ONE:
+            return "Fendt steering valve not ready! Check CAN connection.";
+        case TractorBrand::CASEIH_NH:
+            return "Case IH/NH steering valve not ready! Check CAN connection.";
+        case TractorBrand::CLAAS:
+            return "CLAAS steering valve not ready! Check CAN connection.";
+        case TractorBrand::JCB:
+            return "JCB steering valve not ready! Check CAN connection.";
+        case TractorBrand::CAT_MT:
+            return "CAT MT steering valve not ready! Check CAN connection.";
+        case TractorBrand::LINDNER:
+            return "Lindner steering valve not ready! Check CAN connection.";
+        case TractorBrand::GENERIC:
+            return "Keya motor not responding! Check CAN connection.";
+        default:
+            return "Tractor steering not ready! Check CAN connection.";
+    }
+}
 
 AutosteerProcessor::AutosteerProcessor() {
 }
@@ -320,6 +346,42 @@ void AutosteerProcessor::process() {
             // Check if any button was pressed
             if ((buttonReading == LOW && lastButtonReading == HIGH) || masseyEngagePressed ||
                 fendtButtonPressed || caseIHEngagePressed || catMTEngagePressed || claasEngagePressed || jcbEngagePressed || lindnerEngagePressed) {
+
+                // SAFETY CHECK: Verify motor/valve ready before engagement
+                // Only check for TractorCAN drivers (not PWM or Keya Serial)
+                if (motorPTR && motorPTR->getType() == MotorDriverType::TRACTOR_CAN) {
+                    TractorCANDriver* tractorCAN = static_cast<TractorCANDriver*>(motorPTR);
+
+                    if (tractorCAN) {
+                        TractorBrand brand = tractorCAN->getCurrentBrand();
+                        bool motorReady = false;
+
+                        // Check readiness based on brand
+                        if (brand == TractorBrand::GENERIC) {
+                            // Keya CAN - check heartbeat
+                            motorReady = tractorCAN->isHeartbeatValid();
+                        } else {
+                            // Tractor brands - check valve ready
+                            motorReady = tractorCAN->isValveReady();
+                        }
+
+                        // Block engagement if not ready
+                        if (!motorReady) {
+                            const char* message = getTractorValveMessage(brand);
+                            MessageBuilder::sendHardwarePopup(message, 5, 1);  // 5 sec, warning color
+
+                            LOG_WARNING(EventSource::AUTOSTEER,
+                                "Autosteer engagement blocked - motor/valve not ready (brand: %d)",
+                                static_cast<int>(brand));
+
+                            // Don't toggle state - exit early
+                            lastButtonReading = buttonReading;
+                            return;
+                        }
+                    }
+                }
+                // else: PWM_MOTOR or KEYA_SERIAL - no check needed, proceed normally
+
                 // Button was just pressed - toggle state
                 steerState = !steerState;
                 const char* buttonType = masseyEngagePressed ? "Massey K_Bus button" :
@@ -347,8 +409,40 @@ void AutosteerProcessor::process() {
             // SWITCH MODE - Follow switch position
             bool switchOn = adProcessor.isSteerSwitchOn();
             static bool lastSwitchState = false;
-            
+
             if (switchOn != lastSwitchState) {
+                // SAFETY CHECK: Verify motor/valve ready before engagement (only when arming)
+                if (switchOn) {  // Only check when switching ON (arming)
+                    if (motorPTR && motorPTR->getType() == MotorDriverType::TRACTOR_CAN) {
+                        TractorCANDriver* tractorCAN = static_cast<TractorCANDriver*>(motorPTR);
+
+                        if (tractorCAN) {
+                            TractorBrand brand = tractorCAN->getCurrentBrand();
+                            bool motorReady = false;
+
+                            // Check readiness based on brand
+                            if (brand == TractorBrand::GENERIC) {
+                                motorReady = tractorCAN->isHeartbeatValid();
+                            } else {
+                                motorReady = tractorCAN->isValveReady();
+                            }
+
+                            // Block engagement if not ready
+                            if (!motorReady) {
+                                const char* message = getTractorValveMessage(brand);
+                                MessageBuilder::sendHardwarePopup(message, 5, 1);
+
+                                LOG_WARNING(EventSource::AUTOSTEER,
+                                    "Autosteer engagement blocked via switch - motor/valve not ready (brand: %d)",
+                                    static_cast<int>(brand));
+
+                                // Don't update switch state - keep it disarmed
+                                return;
+                            }
+                        }
+                    }
+                }
+
                 // Switch state changed
                 steerState = switchOn ? 0 : 1;  // 0 = armed, 1 = disarmed
                 LOG_INFO(EventSource::AUTOSTEER, "Autosteer %s via switch", 
@@ -372,6 +466,36 @@ void AutosteerProcessor::process() {
                  kickoutMonitor ? kickoutMonitor->hasKickout() : 0);
 
         if (guidanceActive) {
+            // SAFETY CHECK: Verify motor/valve ready before engagement
+            if (motorPTR && motorPTR->getType() == MotorDriverType::TRACTOR_CAN) {
+                TractorCANDriver* tractorCAN = static_cast<TractorCANDriver*>(motorPTR);
+                if (tractorCAN) {
+                    TractorBrand brand = tractorCAN->getCurrentBrand();
+                    bool motorReady = false;
+
+                    if (brand == TractorBrand::GENERIC) {
+                        // Keya motor - check heartbeat validity
+                        motorReady = tractorCAN->isHeartbeatValid();
+                    } else {
+                        // Tractor CAN valve - check valve ready status
+                        motorReady = tractorCAN->isValveReady();
+                    }
+
+                    // Block engagement if not ready
+                    if (!motorReady) {
+                        const char* message = getTractorValveMessage(brand);
+                        MessageBuilder::sendHardwarePopup(message, 5, 1);
+
+                        LOG_WARNING(EventSource::AUTOSTEER,
+                            "Autosteer engagement blocked via AgOpenGPS - motor/valve not ready (brand: %d)",
+                            static_cast<int>(brand));
+
+                        // Don't activate steering - keep it disarmed
+                        return;
+                    }
+                }
+            }
+
             // Guidance turned ON in AgOpenGPS
             steerState = 0;  // Activate steering
             LOG_INFO(EventSource::AUTOSTEER, "Autosteer ARMED via AgOpenGPS (OSB)");

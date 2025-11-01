@@ -6,7 +6,7 @@
 SerialManager *SerialManager::instance = nullptr;
 
 SerialManager::SerialManager()
-    : isInitialized(false), serialIMU(&Serial4), prevUSB1DTR(false), prevUSB2DTR(false), currentRadioBaudRate(0)
+    : isInitialized(false), serialIMU(&SerialIMU), prevUSB1DTR(false), prevUSB2DTR(false), currentRadioBaudRate(0)
 {
     instance = this;
 }

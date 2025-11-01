@@ -18,10 +18,9 @@ private:
     bool esp32Detected = false;
     uint32_t lastHelloTime = 0;
     static constexpr uint32_t HELLO_TIMEOUT_MS = 10000;   // Consider disconnected after 10s (ESP32 sends every 5s)
-    
-    // Serial configuration
-    static constexpr uint32_t BAUD_RATE = 460800;  // Must match SerialManager BAUD_ESP32
-    
+
+    // Serial configuration handled by SerialManager (BAUD_ESP32 = 460800)
+
     // Receive buffer for serial data
     static constexpr size_t RX_BUFFER_SIZE = 512;
     uint8_t rxBuffer[RX_BUFFER_SIZE];

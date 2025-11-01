@@ -28,18 +28,18 @@
 // ANALOG PINS - Owner: ADProcessor
 const uint8_t WAS_SENSOR_PIN = A15;    // Wheel Angle Sensor
 const uint8_t CURRENT_PIN = A13;       // Motor current sensor
-#define KICKOUT_A_PIN A12              // Pressure sensor (analog) / Encoder A (digital)
-#define WORK_PIN A17                   // Work switch input
+const uint8_t KICKOUT_A_PIN = A12;     // Pressure sensor (analog) / Encoder A (digital)
+const uint8_t WORK_PIN = A17;          // Work switch input
 
 // DIGITAL PINS - Various owners
 const uint8_t SPEEDPULSE_PIN = 33;     // Owner: PWMProcessor
-const uint8_t SPEEDPULSE10_PIN = 37;   // Currently unused
+const uint8_t SPEEDPULSE10_PIN = 37;   // Owner: PWMProcessor
 const uint8_t BUZZER = 36;             // Owner: HardwareManager
-#define SLEEP_PIN 4                    // Owner: MotorDriverInterface
-#define PWM1_PIN 5                     // Owner: PWMMotorDriver
-#define PWM2_PIN 6                     // Owner: PWMMotorDriver
-#define STEER_PIN 2                    // Owner: ADProcessor
-#define KICKOUT_D_PIN 3                // Owner: EncoderProcessor/KickoutMonitor
+const uint8_t SLEEP_PIN = 4;           // Owner: MotorDriverInterface
+const uint8_t PWM1_PIN = 5;            // Owner: PWMMotorDriver
+const uint8_t PWM2_PIN = 6;            // Owner: PWMMotorDriver
+const uint8_t STEER_PIN = 2;           // Owner: ADProcessor
+const uint8_t KICKOUT_D_PIN = 3;       // Owner: EncoderProcessor/KickoutMonitor
 
 class HardwareManager
 {

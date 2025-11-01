@@ -34,6 +34,7 @@
 #include <QNEthernet.h>
 #include "ESP32Interface.h"
 #include "UM98xManager.h"
+#include "SerialManager.h"
 
 using namespace qindesign::network;
 
@@ -1110,8 +1111,8 @@ void SimpleWebManager::handleUM98xRead(EthernetClient& client) {
     static bool managerInitialized = false;
     
     if (!managerInitialized) {
-        // Initialize with GPS1 serial port (Serial5)
-        if (!um98xManager.init(&Serial5)) {
+        // Initialize with GPS1 serial port (SerialGPS1)
+        if (!um98xManager.init(&SerialGPS1)) {
             StaticJsonDocument<128> doc;
             doc["success"] = false;
             doc["error"] = "Failed to initialize UM98x manager";
@@ -1170,8 +1171,8 @@ void SimpleWebManager::handleUM98xWrite(EthernetClient& client) {
     static bool managerInitialized = false;
     
     if (!managerInitialized) {
-        // Initialize with GPS1 serial port (Serial5)
-        if (!um98xManager.init(&Serial5)) {
+        // Initialize with GPS1 serial port (SerialGPS1)
+        if (!um98xManager.init(&SerialGPS1)) {
             StaticJsonDocument<128> responseDoc;
             responseDoc["success"] = false;
             responseDoc["error"] = "Failed to initialize UM98x manager";

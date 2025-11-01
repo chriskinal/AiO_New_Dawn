@@ -11,10 +11,11 @@ class DanfossMotorDriver : public MotorDriverInterface {
 private:
     // Status tracking
     MotorStatus status;
-    
-    // Output pins (from machine outputs)
-    static constexpr uint8_t ENABLE_OUTPUT = 5;   // Output 5 for enable
-    static constexpr uint8_t CONTROL_OUTPUT = 6;  // Output 6 for analog control
+
+    // PCA9685 output channel numbers (NOT Teensy GPIO pins)
+    // These are MachineProcessor output numbers that map to PCA9685 channels
+    static constexpr uint8_t ENABLE_OUTPUT = 5;   // Machine output 5 (PCA9685 pin 10)
+    static constexpr uint8_t CONTROL_OUTPUT = 6;  // Machine output 6 (PCA9685 pin 9)
     
     // PWM mapping constants
     static constexpr uint8_t PWM_LEFT = 64;       // 25% duty cycle
