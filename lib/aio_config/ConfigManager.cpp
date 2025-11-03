@@ -97,6 +97,8 @@ void ConfigManager::saveSteerConfig()
     addr += sizeof(configByte1);
     EEPROM.put(addr, configByte2);
     addr += sizeof(configByte2);
+    EEPROM.put(addr, softStartDurationMs);
+    addr += sizeof(softStartDurationMs);
     EEPROM.put(addr, pulseCountMax);
     addr += sizeof(pulseCountMax);
     EEPROM.put(addr, minSpeed);
@@ -119,6 +121,8 @@ void ConfigManager::loadSteerConfig()
     addr += sizeof(configByte1);
     EEPROM.get(addr, configByte2);
     addr += sizeof(configByte2);
+    EEPROM.get(addr, softStartDurationMs);
+    addr += sizeof(softStartDurationMs);
     EEPROM.get(addr, pulseCountMax);
     addr += sizeof(pulseCountMax);
     EEPROM.get(addr, minSpeed);
@@ -433,6 +437,7 @@ void ConfigManager::resetToDefaults()
     currentSensor = false;
     isUseYAxis = false;
     pwmBrakeMode = false;  // Default to coast mode
+    softStartDurationMs = 500;  // Default 500ms enabled (direction change = 250ms auto)
     pulseCountMax = 5;
     minSpeed = 3;
     motorDriverConfig = 0x00;  // Default to DRV8701 with wheel encoder

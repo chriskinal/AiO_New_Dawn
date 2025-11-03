@@ -104,6 +104,9 @@ public:
     void updateBufferStats();
 
 private:
+    // Current radio baud rate tracking
+    uint32_t currentRadioBaudRate;
+
     // Peak buffer usage tracking
     struct BufferStats {
         size_t peakUsage;

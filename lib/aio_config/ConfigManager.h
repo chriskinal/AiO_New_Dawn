@@ -78,6 +78,7 @@ private:
     bool currentSensor;
     bool isUseYAxis;
     bool pwmBrakeMode;  // false = coast mode (default), true = brake mode
+    uint16_t softStartDurationMs;  // 0=disabled, 100-1000ms enabled (soft-accel is auto-calculated as 1/2)
     uint8_t pulseCountMax;
     uint8_t minSpeed;
     uint8_t motorDriverConfig;  // From PGN251 Byte 8
@@ -207,6 +208,8 @@ public:
     void setIsUseYAxis(bool value) { isUseYAxis = value; }
     bool getPWMBrakeMode() const { return pwmBrakeMode; }
     void setPWMBrakeMode(bool value) { pwmBrakeMode = value; }
+    uint16_t getSoftStartDurationMs() const { return softStartDurationMs; }
+    void setSoftStartDurationMs(uint16_t value) { softStartDurationMs = constrain(value, 0, 1000); }
     uint8_t getPulseCountMax() const { return pulseCountMax; }
     void setPulseCountMax(uint8_t value) { pulseCountMax = value; }
     uint8_t getMinSpeed() const { return minSpeed; }
