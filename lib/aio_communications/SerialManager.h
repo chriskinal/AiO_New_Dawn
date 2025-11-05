@@ -3,7 +3,7 @@
 
 #include "Arduino.h"
 
-// Serial port definitions (self-contained, no pcb.h dependency)
+// Serial port definitions
 #define SerialRadio Serial3
 #define SerialIMU Serial4
 #define SerialGPS1 Serial5
@@ -37,14 +37,14 @@ private:
     bool prevUSB2DTR;
 
 public:
-    // Buffer sizes (matching pcb.h values - using existing global buffers)
-    static const uint16_t GPS_BUFFER_SIZE = 128;    // GPS1rxbuffer size from pcb.h
-    static const uint16_t GPS_TX_BUFFER_SIZE = 256; // GPS1txbuffer size from pcb.h
+    // Buffer sizes
+    static const uint16_t GPS_BUFFER_SIZE = 128;
+    static const uint16_t GPS_TX_BUFFER_SIZE = 256;
     static const uint16_t RADIO_BUFFER_SIZE = 64;
     static const uint16_t RS232_BUFFER_SIZE = 256;
     static const uint16_t ESP32_BUFFER_SIZE = 256;
 
-    // Baud rates (matching pcb.h values)
+    // Baud rates
     static const int32_t BAUD_GPS = 460800;
     static const int32_t BAUD_RADIO = 115200;
     static const int32_t BAUD_RS232 = 115200;
@@ -108,7 +108,8 @@ private:
     uint32_t currentRadioBaudRate;
 
     // Peak buffer usage tracking
-    struct BufferStats {
+    struct BufferStats
+    {
         size_t peakUsage;
         size_t overflowCount;
         uint32_t lastCheckTime;

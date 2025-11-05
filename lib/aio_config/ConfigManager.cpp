@@ -18,10 +18,11 @@ ConfigManager::ConfigManager()
     // Defer actual initialization until Serial is ready
 }
 
-void ConfigManager::init() 
+void ConfigManager::init()
 {
-    if (initialized) return;
-    
+    if (initialized)
+        return;
+
     resetToDefaults();
     if (checkVersion())
     {
@@ -45,7 +46,8 @@ ConfigManager::~ConfigManager()
 
 ConfigManager *ConfigManager::getInstance()
 {
-    if (instance && !instance->initialized) {
+    if (instance && !instance->initialized)
+    {
         // Force initialization if someone tries to use before init() is called
         instance->init();
     }
@@ -89,8 +91,8 @@ void ConfigManager::saveSteerConfig()
     if (pwmBrakeMode)
         configByte2 |= 0x10;
 
-    LOG_DEBUG(EventSource::CONFIG, "Saving steer config: button=%d, switch=%d, byte1=0x%02X", 
-                  steerButton, steerSwitch, configByte1);
+    LOG_DEBUG(EventSource::CONFIG, "Saving steer config: button=%d, switch=%d, byte1=0x%02X",
+              steerButton, steerSwitch, configByte1);
 
     int addr = STEER_CONFIG_ADDR;
     EEPROM.put(addr, configByte1);
@@ -104,12 +106,12 @@ void ConfigManager::saveSteerConfig()
     EEPROM.put(addr, minSpeed);
     addr += sizeof(minSpeed);
     EEPROM.put(addr, motorDriverConfig);
-    
+
     // Verify the write
     uint8_t verifyByte1;
     EEPROM.get(STEER_CONFIG_ADDR, verifyByte1);
-    LOG_DEBUG(EventSource::CONFIG, "Steer config verification: wrote=0x%02X, read=0x%02X", 
-                  configByte1, verifyByte1);
+    LOG_DEBUG(EventSource::CONFIG, "Steer config verification: wrote=0x%02X, read=0x%02X",
+              configByte1, verifyByte1);
 }
 
 void ConfigManager::loadSteerConfig()
@@ -149,8 +151,8 @@ void ConfigManager::loadSteerConfig()
 void ConfigManager::saveSteerSettings()
 {
     LOG_DEBUG(EventSource::CONFIG, "Saving steer settings: Kp=%.1f, High=%d, Low=%.1f, Min=%d",
-                  kp, highPWM, lowPWM, minPWM);
-    
+              kp, highPWM, lowPWM, minPWM);
+
     int addr = STEER_SETTINGS_ADDR;
     EEPROM.put(addr, kp);
     addr += sizeof(kp);
@@ -165,12 +167,12 @@ void ConfigManager::saveSteerSettings()
     EEPROM.put(addr, wasOffset);
     addr += sizeof(wasOffset);
     EEPROM.put(addr, ackermanFix);
-    
+
     // Verify the save
     uint8_t verifyHighPWM;
     EEPROM.get(STEER_SETTINGS_ADDR + sizeof(kp), verifyHighPWM);
     LOG_DEBUG(EventSource::CONFIG, "Steer settings verification: saved highPWM=%d, read back=%d",
-                  highPWM, verifyHighPWM);
+              highPWM, verifyHighPWM);
 }
 
 void ConfigManager::loadSteerSettings()
@@ -189,9 +191,9 @@ void ConfigManager::loadSteerSettings()
     EEPROM.get(addr, wasOffset);
     addr += sizeof(wasOffset);
     EEPROM.get(addr, ackermanFix);
-    
+
     LOG_DEBUG(EventSource::CONFIG, "Loaded steer settings: Kp=%.1f, High=%d, Low=%.1f, Min=%d",
-                  kp, highPWM, lowPWM, minPWM);
+              kp, highPWM, lowPWM, minPWM);
 }
 
 void ConfigManager::saveGPSConfig()
@@ -230,8 +232,9 @@ void ConfigManager::loadGPSConfig()
     gpsPassThrough = (gpsConfigByte & 0x02) != 0;
 
     // Set default if not initialized
-    if (serialRadioBaudRate == 0 || serialRadioBaudRate == 0xFFFFFFFF) {
-        serialRadioBaudRate = 115200;  // Default to 115200
+    if (serialRadioBaudRate == 0 || serialRadioBaudRate == 0xFFFFFFFF)
+    {
+        serialRadioBaudRate = 115200; // Default to 115200
     }
 }
 
@@ -393,7 +396,7 @@ void ConfigManager::loadINSConfig()
 
 void ConfigManager::loadAllConfigs()
 {
-    loadNetworkConfig();  // Load network first as it might be needed by other modules
+    loadNetworkConfig(); // Load network first as it might be needed by other modules
     loadSteerConfig();
     loadSteerSettings();
     loadGPSConfig();
@@ -403,12 +406,12 @@ void ConfigManager::loadAllConfigs()
     loadTurnSensorConfig();
     loadAnalogWorkSwitchConfig();
     loadMiscConfig();
-    loadCANSteerConfig();  // Load CAN configuration
+    loadCANSteerConfig(); // Load CAN configuration
 }
 
 void ConfigManager::saveAllConfigs()
 {
-    saveNetworkConfig();  // Save network config too
+    saveNetworkConfig(); // Save network config too
     saveSteerConfig();
     saveSteerSettings();
     saveGPSConfig();
@@ -418,7 +421,7 @@ void ConfigManager::saveAllConfigs()
     saveTurnSensorConfig();
     saveAnalogWorkSwitchConfig();
     saveMiscConfig();
-    saveCANSteerConfig();  // Save CAN configuration
+    saveCANSteerConfig(); // Save CAN configuration
 }
 
 void ConfigManager::resetToDefaults()
@@ -436,11 +439,11 @@ void ConfigManager::resetToDefaults()
     pressureSensor = false;
     currentSensor = false;
     isUseYAxis = false;
-    pwmBrakeMode = false;  // Default to coast mode
-    softStartDurationMs = 500;  // Default 500ms enabled (direction change = 250ms auto)
+    pwmBrakeMode = false;      // Default to coast mode
+    softStartDurationMs = 500; // Default 500ms enabled (direction change = 250ms auto)
     pulseCountMax = 5;
     minSpeed = 3;
-    motorDriverConfig = 0x00;  // Default to DRV8701 with wheel encoder
+    motorDriverConfig = 0x00; // Default to DRV8701 with wheel encoder
 
     // Steer settings defaults
     kp = 40.0;
@@ -452,7 +455,7 @@ void ConfigManager::resetToDefaults()
     ackermanFix = 1.0;
 
     // GPS config defaults
-    gpsBaudRate = 460800; // From pcb.h
+    gpsBaudRate = 460800;
     gpsSyncMode = false;
     gpsPassThrough = false;
     gpsProtocol = 0;
@@ -466,7 +469,7 @@ void ConfigManager::resetToDefaults()
     raiseTime = 2;
     lowerTime = 4;
     isPinActiveHigh = false;
-    sectionControlSleepMode = false;  // Default: onboard SC always active
+    sectionControlSleepMode = false; // Default: onboard SC always active
     user1 = 0;
     user2 = 0;
     user3 = 0;
@@ -490,16 +493,16 @@ void ConfigManager::resetToDefaults()
     insVarianceHeading = 1.0;
     insVarianceRoll = 1.0;
     insVariancePitch = 1.0;
-    
+
     // LED defaults
-    ledBrightness = 25;  // 25% default brightness
-    
+    ledBrightness = 25; // 25% default brightness
+
     // Buzzer defaults
-    buzzerLoudMode = true;  // Default to loud mode for field use
-    
+    buzzerLoudMode = true; // Default to loud mode for field use
+
     // JD PWM defaults
-    jdPWMSensitivity = 5;  // Middle sensitivity
-    
+    jdPWMSensitivity = 5; // Middle sensitivity
+
     // Turn sensor defaults
     turnSensorType = 0;      // None
     encoderType = 1;         // Single channel
@@ -507,34 +510,49 @@ void ConfigManager::resetToDefaults()
     pressureThreshold = 100; // Middle of range
     currentThreshold = 100;  // Middle of range
     currentZeroOffset = 90;  // From NG-V6 code
-    
+
     // JD PWM defaults
     jdPWMEnabled = false;
-    jdPWMSensitivity = 5;       // Middle sensitivity (1-10 scale)
-    
+    jdPWMSensitivity = 5; // Middle sensitivity (1-10 scale)
+
     // Analog work switch defaults
     analogWorkSwitchEnabled = false;
-    workSwitchSetpoint = 50;     // 50%
-    workSwitchHysteresis = 20;   // 20%
+    workSwitchSetpoint = 50;   // 50%
+    workSwitchHysteresis = 20; // 20%
     invertWorkSwitch = false;
 
     // Network configuration defaults
-    ipAddress[0] = 192; ipAddress[1] = 168; ipAddress[2] = 5; ipAddress[3] = 126;
-    subnet[0] = 255; subnet[1] = 255; subnet[2] = 255; subnet[3] = 0;
-    gateway[0] = 192; gateway[1] = 168; gateway[2] = 5; gateway[3] = 1;
-    dns[0] = 8; dns[1] = 8; dns[2] = 8; dns[3] = 8;
-    destIP[0] = 192; destIP[1] = 168; destIP[2] = 5; destIP[3] = 255;  // Broadcast
+    ipAddress[0] = 192;
+    ipAddress[1] = 168;
+    ipAddress[2] = 5;
+    ipAddress[3] = 126;
+    subnet[0] = 255;
+    subnet[1] = 255;
+    subnet[2] = 255;
+    subnet[3] = 0;
+    gateway[0] = 192;
+    gateway[1] = 168;
+    gateway[2] = 5;
+    gateway[3] = 1;
+    dns[0] = 8;
+    dns[1] = 8;
+    dns[2] = 8;
+    dns[3] = 8;
+    destIP[0] = 192;
+    destIP[1] = 168;
+    destIP[2] = 5;
+    destIP[3] = 255; // Broadcast
     destPort = 9999;
 
     // CAN steering defaults
-    canSteerConfig.brand = 0;       // Disabled
-    canSteerConfig.can1Speed = 0;   // 250k
+    canSteerConfig.brand = 0;        // Disabled
+    canSteerConfig.can1Speed = 0;    // 250k
     canSteerConfig.can1Function = 0; // None
-    canSteerConfig.can2Speed = 0;   // 250k
+    canSteerConfig.can2Speed = 0;    // 250k
     canSteerConfig.can2Function = 0; // None
-    canSteerConfig.can3Speed = 0;   // 250k
+    canSteerConfig.can3Speed = 0;    // 250k
     canSteerConfig.can3Function = 0; // None
-    canSteerConfig.moduleID = 0x1C; // Default Keya module ID
+    canSteerConfig.moduleID = 0x1C;  // Default Keya module ID
     canSteerConfig.reserved[0] = 0;
 
     eeVersion = CURRENT_EE_VERSION;
@@ -544,34 +562,35 @@ bool ConfigManager::checkVersion()
 {
     uint16_t storedVersion;
     EEPROM.get(EE_VERSION_ADDR, storedVersion);
-    
+
     // If EEPROM is uninitialized (0 or 0xFFFF), initialize it
-    if (storedVersion == 0 || storedVersion == 0xFFFF) {
+    if (storedVersion == 0 || storedVersion == 0xFFFF)
+    {
         EARLY_LOG("EEPROM appears uninitialized, performing first-time setup");
-        return false;  // This will trigger saveAllConfigs() and updateVersion()
+        return false; // This will trigger saveAllConfigs() and updateVersion()
     }
-    
+
     return (storedVersion == CURRENT_EE_VERSION);
 }
 
 void ConfigManager::updateVersion()
 {
-    LOG_DEBUG(EventSource::CONFIG, "Writing version %d to EEPROM address %d", 
-                  CURRENT_EE_VERSION, EE_VERSION_ADDR);
+    LOG_DEBUG(EventSource::CONFIG, "Writing version %d to EEPROM address %d",
+              CURRENT_EE_VERSION, EE_VERSION_ADDR);
     EEPROM.put(EE_VERSION_ADDR, (uint16_t)CURRENT_EE_VERSION);
-    
+
     // Verify the write
     uint16_t verifyVersion;
     EEPROM.get(EE_VERSION_ADDR, verifyVersion);
-    LOG_DEBUG(EventSource::CONFIG, "Version write verification: wrote=%d, read back=%d", 
-                  CURRENT_EE_VERSION, verifyVersion);
+    LOG_DEBUG(EventSource::CONFIG, "Version write verification: wrote=%d, read back=%d",
+              CURRENT_EE_VERSION, verifyVersion);
 }
 
 void ConfigManager::saveTurnSensorConfig()
 {
-    LOG_DEBUG(EventSource::CONFIG, "Saving turn sensor config: Type=%d, EncoderType=%d", 
+    LOG_DEBUG(EventSource::CONFIG, "Saving turn sensor config: Type=%d, EncoderType=%d",
               turnSensorType, encoderType);
-    
+
     int addr = TURN_SENSOR_CONFIG_ADDR;
     EEPROM.put(addr, turnSensorType);
     addr += sizeof(turnSensorType);
@@ -612,16 +631,16 @@ void ConfigManager::loadTurnSensorConfig()
     // Use the previously skipped byte for jdPWMSensitivity
     EEPROM.get(addr, jdPWMSensitivity);
     addr += sizeof(jdPWMSensitivity);
-    
-    LOG_DEBUG(EventSource::CONFIG, "Loaded turn sensor config: Type=%d, EncoderType=%d, JDPWM=%d", 
+
+    LOG_DEBUG(EventSource::CONFIG, "Loaded turn sensor config: Type=%d, EncoderType=%d, JDPWM=%d",
               turnSensorType, encoderType, jdPWMEnabled);
 }
 
 void ConfigManager::saveAnalogWorkSwitchConfig()
 {
-    LOG_INFO(EventSource::CONFIG, "Saving analog work switch config to EEPROM: Enabled=%d, SP=%d%%, H=%d%%, Inv=%d", 
+    LOG_INFO(EventSource::CONFIG, "Saving analog work switch config to EEPROM: Enabled=%d, SP=%d%%, H=%d%%, Inv=%d",
              analogWorkSwitchEnabled, workSwitchSetpoint, workSwitchHysteresis, invertWorkSwitch);
-    
+
     int addr = ANALOG_WORK_SWITCH_ADDR;
     EEPROM.put(addr, analogWorkSwitchEnabled);
     addr += sizeof(analogWorkSwitchEnabled);
@@ -642,24 +661,26 @@ void ConfigManager::loadAnalogWorkSwitchConfig()
     EEPROM.get(addr, workSwitchHysteresis);
     addr += sizeof(workSwitchHysteresis);
     EEPROM.get(addr, invertWorkSwitch);
-    
+
     // Validate loaded values
-    if (workSwitchSetpoint > 100) {
-        workSwitchSetpoint = 50;  // Default
+    if (workSwitchSetpoint > 100)
+    {
+        workSwitchSetpoint = 50; // Default
     }
-    if (workSwitchHysteresis < 5 || workSwitchHysteresis > 25) {
-        workSwitchHysteresis = 20;  // Default
+    if (workSwitchHysteresis < 5 || workSwitchHysteresis > 25)
+    {
+        workSwitchHysteresis = 20; // Default
     }
-    
-    LOG_INFO(EventSource::CONFIG, "Loaded analog work switch config from EEPROM: Enabled=%d, SP=%d%%, H=%d%%, Inv=%d", 
+
+    LOG_INFO(EventSource::CONFIG, "Loaded analog work switch config from EEPROM: Enabled=%d, SP=%d%%, H=%d%%, Inv=%d",
              analogWorkSwitchEnabled, workSwitchSetpoint, workSwitchHysteresis, invertWorkSwitch);
 }
 
 void ConfigManager::saveMiscConfig()
 {
-    LOG_DEBUG(EventSource::CONFIG, "Saving misc config: LED=%d%%, BuzzerLoud=%d, JD_PWM=%d", 
+    LOG_DEBUG(EventSource::CONFIG, "Saving misc config: LED=%d%%, BuzzerLoud=%d, JD_PWM=%d",
               ledBrightness, buzzerLoudMode, jdPWMSensitivity);
-    
+
     int addr = MISC_CONFIG_ADDR;
     EEPROM.put(addr, ledBrightness);
     addr += sizeof(ledBrightness);
@@ -673,66 +694,76 @@ void ConfigManager::loadMiscConfig()
     int addr = MISC_CONFIG_ADDR;
     EEPROM.get(addr, ledBrightness);
     addr += sizeof(ledBrightness);
-    
+
     // Read buzzer mode as uint8_t first to check for invalid values
     uint8_t buzzerModeRaw;
     EEPROM.get(addr, buzzerModeRaw);
     addr += sizeof(buzzerLoudMode);
-    
+
     // Check if the raw value is invalid (uninitialized EEPROM is typically 0xFF)
-    if (buzzerModeRaw > 1) {
+    if (buzzerModeRaw > 1)
+    {
         LOG_WARNING(EventSource::CONFIG, "Invalid buzzer mode in EEPROM (%d), defaulting to quiet mode", buzzerModeRaw);
-        buzzerLoudMode = false;  // Default to quiet mode for development
-    } else {
+        buzzerLoudMode = false; // Default to quiet mode for development
+    }
+    else
+    {
         buzzerLoudMode = (buzzerModeRaw == 1);
     }
-    
+
     EEPROM.get(addr, jdPWMSensitivity);
-    
+
     // Validate loaded values
-    if (ledBrightness < 5 || ledBrightness > 100) {
-        ledBrightness = 25;  // Default
+    if (ledBrightness < 5 || ledBrightness > 100)
+    {
+        ledBrightness = 25; // Default
     }
-    if (jdPWMSensitivity < 1 || jdPWMSensitivity > 10) {
-        jdPWMSensitivity = 5;  // Default
+    if (jdPWMSensitivity < 1 || jdPWMSensitivity > 10)
+    {
+        jdPWMSensitivity = 5; // Default
     }
-    
-    LOG_INFO(EventSource::CONFIG, "Loaded misc config from EEPROM: LED=%d%%, BuzzerLoud=%d, JD_PWM=%d", 
+
+    LOG_INFO(EventSource::CONFIG, "Loaded misc config from EEPROM: LED=%d%%, BuzzerLoud=%d, JD_PWM=%d",
              ledBrightness, buzzerLoudMode, jdPWMSensitivity);
 }
 
 void ConfigManager::saveNetworkConfig()
 {
     int addr = NETWORK_CONFIG_ADDR;
-    
+
     // Write a marker byte to indicate valid config
     uint8_t marker = 0xAA;
     EEPROM.put(addr, marker);
     addr += sizeof(marker);
-    
+
     // Save network configuration
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.put(addr, ipAddress[i]);
         addr += sizeof(uint8_t);
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.put(addr, subnet[i]);
         addr += sizeof(uint8_t);
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.put(addr, gateway[i]);
         addr += sizeof(uint8_t);
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.put(addr, dns[i]);
         addr += sizeof(uint8_t);
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.put(addr, destIP[i]);
         addr += sizeof(uint8_t);
     }
     EEPROM.put(addr, destPort);
-    
+
     LOG_INFO(EventSource::CONFIG, "Saved network config - IP: %d.%d.%d.%d",
              ipAddress[0], ipAddress[1], ipAddress[2], ipAddress[3]);
 }
@@ -740,60 +771,69 @@ void ConfigManager::saveNetworkConfig()
 void ConfigManager::loadNetworkConfig()
 {
     int addr = NETWORK_CONFIG_ADDR;
-    
+
     // Check for valid config marker
     uint8_t marker;
     EEPROM.get(addr, marker);
     addr += sizeof(marker);
-    
-    if (marker != 0xAA) {
+
+    if (marker != 0xAA)
+    {
         LOG_INFO(EventSource::CONFIG, "No valid network config found, using defaults");
         return;
     }
-    
+
     // Load network configuration
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.get(addr, ipAddress[i]);
         addr += sizeof(uint8_t);
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.get(addr, subnet[i]);
         addr += sizeof(uint8_t);
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.get(addr, gateway[i]);
         addr += sizeof(uint8_t);
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.get(addr, dns[i]);
         addr += sizeof(uint8_t);
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         EEPROM.get(addr, destIP[i]);
         addr += sizeof(uint8_t);
     }
     EEPROM.get(addr, destPort);
-    
+
     LOG_INFO(EventSource::CONFIG, "Loaded network config - IP: %d.%d.%d.%d",
              ipAddress[0], ipAddress[1], ipAddress[2], ipAddress[3]);
 }
 
 // CAN Steer configuration methods
-CANSteerConfig ConfigManager::getCANSteerConfig() const {
+CANSteerConfig ConfigManager::getCANSteerConfig() const
+{
     return canSteerConfig;
 }
 
-void ConfigManager::setCANSteerConfig(const CANSteerConfig& config) {
+void ConfigManager::setCANSteerConfig(const CANSteerConfig &config)
+{
     canSteerConfig = config;
 }
 
-void ConfigManager::saveCANSteerConfig() {
+void ConfigManager::saveCANSteerConfig()
+{
     // We'll store this at the end of the EEPROM space
     // Using address 900 (plenty of room after other configs)
     int addr = 900;
 
     // Write a marker byte to indicate valid config
-    uint8_t marker = 0xCA;  // 'CA' for CAN
+    uint8_t marker = 0xCA; // 'CA' for CAN
     EEPROM.put(addr, marker);
     addr += sizeof(marker);
 
@@ -804,7 +844,8 @@ void ConfigManager::saveCANSteerConfig() {
              canSteerConfig.brand);
 }
 
-void ConfigManager::loadCANSteerConfig() {
+void ConfigManager::loadCANSteerConfig()
+{
     int addr = 900;
 
     // Check for valid config marker
@@ -812,9 +853,10 @@ void ConfigManager::loadCANSteerConfig() {
     EEPROM.get(addr, marker);
     addr += sizeof(marker);
 
-    if (marker != 0xCA) {
+    if (marker != 0xCA)
+    {
         LOG_INFO(EventSource::CONFIG, "No valid CAN Steer config found, using defaults");
-        canSteerConfig = CANSteerConfig();  // Use default values
+        canSteerConfig = CANSteerConfig(); // Use default values
         return;
     }
 

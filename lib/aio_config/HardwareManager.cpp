@@ -67,15 +67,15 @@ bool HardwareManager::initializePins()
 
     // HARDWARE OWNERSHIP - Pins are now initialized by their owner modules:
     // - ADProcessor: STEER_PIN, WORK_PIN, WAS_SENSOR_PIN, CURRENT_PIN, KICKOUT_A_PIN
-    // - PWMMotorDriver: PWM1_PIN, PWM2_PIN, SLEEP_PIN  
+    // - PWMMotorDriver: PWM1_PIN, PWM2_PIN, SLEEP_PIN
     // - EncoderProcessor: KICKOUT_D_PIN (when encoder enabled)
     // - KickoutMonitor: KICKOUT_D_PIN (when encoder disabled)
     // - PWMProcessor: SPEEDPULSE_PIN
-    
+
     // HardwareManager only initializes pins it directly controls
     pinMode(getBuzzerPin(), OUTPUT);
     digitalWrite(getBuzzerPin(), LOW);
-    
+
     LOG_DEBUG(EventSource::SYSTEM, "HardwareManager pin configuration complete");
     return true;
 }
@@ -89,7 +89,6 @@ bool HardwareManager::initializePWM()
 bool HardwareManager::initializeADC()
 {
     LOG_DEBUG(EventSource::SYSTEM, "Configuring ADC");
-
 
     LOG_DEBUG(EventSource::SYSTEM, "ADC: Using Teensy defaults");
     return true;
@@ -132,7 +131,7 @@ bool HardwareManager::setPWMFrequency(uint8_t mode)
     return true;
 }
 
-// Pin access methods that return the #define values from pcb.h
+// Pin access method defines
 uint8_t HardwareManager::getWASSensorPin() const { return WAS_SENSOR_PIN; }
 uint8_t HardwareManager::getSpeedPulsePin() const { return SPEEDPULSE_PIN; }
 uint8_t HardwareManager::getSpeedPulse10Pin() const { return SPEEDPULSE10_PIN; }
@@ -161,31 +160,34 @@ void HardwareManager::performBuzzerTest()
     // Get buzzer volume setting from ConfigManager
     extern ConfigManager configManager;
     bool loudMode = configManager.getBuzzerLoudMode();
-    
-    if (loudMode) {
+
+    if (loudMode)
+    {
         // Loud mode for field use - play multiple tones
         LOG_INFO(EventSource::SYSTEM, "Playing LOUD buzzer test");
-        
+
         // Play ascending tones
-        tone(getBuzzerPin(), 1000, 200);  // 1kHz for 200ms
+        tone(getBuzzerPin(), 1000, 200); // 1kHz for 200ms
         delay(250);
-        tone(getBuzzerPin(), 1500, 200);  // 1.5kHz for 200ms
+        tone(getBuzzerPin(), 1500, 200); // 1.5kHz for 200ms
         delay(250);
-        tone(getBuzzerPin(), 2000, 300);  // 2kHz for 300ms
+        tone(getBuzzerPin(), 2000, 300); // 2kHz for 300ms
         delay(350);
-        
+
         // Play descending tones
-        tone(getBuzzerPin(), 1500, 200);  // 1.5kHz for 200ms
+        tone(getBuzzerPin(), 1500, 200); // 1.5kHz for 200ms
         delay(250);
-        tone(getBuzzerPin(), 1000, 300);  // 1kHz for 300ms
+        tone(getBuzzerPin(), 1000, 300); // 1kHz for 300ms
         delay(350);
-    } else {
+    }
+    else
+    {
         // Quiet mode for development - cricket-like click
         LOG_INFO(EventSource::SYSTEM, "Playing quiet buzzer test");
-        tone(getBuzzerPin(), 4000, 5);  // 4kHz for 5ms - very quick click
+        tone(getBuzzerPin(), 4000, 5); // 4kHz for 5ms - very quick click
         delay(10);
     }
-    
+
     // Make sure buzzer is off
     noTone(getBuzzerPin());
 }
@@ -235,20 +237,22 @@ bool HardwareManager::getInitializationStatus() const
 }
 
 // Pin ownership management
-bool HardwareManager::requestPinOwnership(uint8_t pin, PinOwner owner, const char* ownerName)
+bool HardwareManager::requestPinOwnership(uint8_t pin, PinOwner owner, const char *ownerName)
 {
     auto it = pinOwnership.find(pin);
-    
-    if (it != pinOwnership.end() && it->second.isOwned) {
-        if (it->second.owner != owner) {
+
+    if (it != pinOwnership.end() && it->second.isOwned)
+    {
+        if (it->second.owner != owner)
+        {
             LOG_ERROR(EventSource::SYSTEM, "Pin %d already owned by %s, %s cannot claim it",
-                     pin, it->second.ownerName, ownerName);
+                      pin, it->second.ownerName, ownerName);
             return false;
         }
         // Same owner reclaiming is OK
         return true;
     }
-    
+
     // Claim ownership
     pinOwnership[pin] = {owner, ownerName, 0, true};
     LOG_DEBUG(EventSource::SYSTEM, "Pin %d claimed by %s", pin, ownerName);
@@ -258,18 +262,20 @@ bool HardwareManager::requestPinOwnership(uint8_t pin, PinOwner owner, const cha
 bool HardwareManager::releasePinOwnership(uint8_t pin, PinOwner owner)
 {
     auto it = pinOwnership.find(pin);
-    
-    if (it == pinOwnership.end() || !it->second.isOwned) {
+
+    if (it == pinOwnership.end() || !it->second.isOwned)
+    {
         LOG_WARNING(EventSource::SYSTEM, "Attempted to release unowned pin %d", pin);
         return false;
     }
-    
-    if (it->second.owner != owner) {
+
+    if (it->second.owner != owner)
+    {
         LOG_ERROR(EventSource::SYSTEM, "Pin %d owned by %s, cannot be released by different owner",
-                 pin, it->second.ownerName);
+                  pin, it->second.ownerName);
         return false;
     }
-    
+
     LOG_DEBUG(EventSource::SYSTEM, "Pin %d released by %s", pin, it->second.ownerName);
     it->second.isOwned = false;
     it->second.owner = OWNER_NONE;
@@ -277,29 +283,31 @@ bool HardwareManager::releasePinOwnership(uint8_t pin, PinOwner owner)
     return true;
 }
 
-bool HardwareManager::transferPinOwnership(uint8_t pin, PinOwner fromOwner, PinOwner toOwner, 
-                                         const char* toOwnerName, void (*cleanupCallback)(uint8_t))
+bool HardwareManager::transferPinOwnership(uint8_t pin, PinOwner fromOwner, PinOwner toOwner,
+                                           const char *toOwnerName, void (*cleanupCallback)(uint8_t))
 {
     auto it = pinOwnership.find(pin);
-    
+
     // Verify current ownership
-    if (it == pinOwnership.end() || !it->second.isOwned || it->second.owner != fromOwner) {
+    if (it == pinOwnership.end() || !it->second.isOwned || it->second.owner != fromOwner)
+    {
         LOG_ERROR(EventSource::SYSTEM, "Pin %d not owned by expected owner, transfer failed", pin);
         return false;
     }
-    
-    LOG_INFO(EventSource::SYSTEM, "Transferring pin %d from %s to %s", 
+
+    LOG_INFO(EventSource::SYSTEM, "Transferring pin %d from %s to %s",
              pin, it->second.ownerName, toOwnerName);
-    
+
     // Run cleanup callback if provided
-    if (cleanupCallback) {
+    if (cleanupCallback)
+    {
         cleanupCallback(pin);
     }
-    
+
     // Transfer ownership
     it->second.owner = toOwner;
     it->second.ownerName = toOwnerName;
-    
+
     return true;
 }
 
@@ -309,7 +317,7 @@ HardwareManager::PinOwner HardwareManager::getPinOwner(uint8_t pin) const
     return (it != pinOwnership.end() && it->second.isOwned) ? it->second.owner : OWNER_NONE;
 }
 
-const char* HardwareManager::getPinOwnerName(uint8_t pin) const
+const char *HardwareManager::getPinOwnerName(uint8_t pin) const
 {
     auto it = pinOwnership.find(pin);
     return (it != pinOwnership.end() && it->second.isOwned) ? it->second.ownerName : "none";
@@ -324,7 +332,8 @@ bool HardwareManager::isPinOwned(uint8_t pin) const
 void HardwareManager::updatePinMode(uint8_t pin, uint8_t mode)
 {
     auto it = pinOwnership.find(pin);
-    if (it != pinOwnership.end()) {
+    if (it != pinOwnership.end())
+    {
         it->second.pinMode = mode;
     }
 }
@@ -332,52 +341,73 @@ void HardwareManager::updatePinMode(uint8_t pin, uint8_t mode)
 void HardwareManager::printPinOwnership()
 {
     LOG_INFO(EventSource::SYSTEM, "=== Pin Ownership Status ===");
-    
-    for (const auto& entry : pinOwnership) {
-        if (entry.second.isOwned) {
-            const char* modeStr = "UNKNOWN";
-            switch (entry.second.pinMode) {
-                case INPUT: modeStr = "INPUT"; break;
-                case OUTPUT: modeStr = "OUTPUT"; break;
-                case INPUT_PULLUP: modeStr = "INPUT_PULLUP"; break;
-                case INPUT_PULLDOWN: modeStr = "INPUT_PULLDOWN"; break;
-                case OUTPUT_OPENDRAIN: modeStr = "OUTPUT_OPENDRAIN"; break;
-                case INPUT_DISABLE: modeStr = "INPUT_DISABLE"; break;
+
+    for (const auto &entry : pinOwnership)
+    {
+        if (entry.second.isOwned)
+        {
+            const char *modeStr = "UNKNOWN";
+            switch (entry.second.pinMode)
+            {
+            case INPUT:
+                modeStr = "INPUT";
+                break;
+            case OUTPUT:
+                modeStr = "OUTPUT";
+                break;
+            case INPUT_PULLUP:
+                modeStr = "INPUT_PULLUP";
+                break;
+            case INPUT_PULLDOWN:
+                modeStr = "INPUT_PULLDOWN";
+                break;
+            case OUTPUT_OPENDRAIN:
+                modeStr = "OUTPUT_OPENDRAIN";
+                break;
+            case INPUT_DISABLE:
+                modeStr = "INPUT_DISABLE";
+                break;
             }
-            LOG_INFO(EventSource::SYSTEM, "Pin %d: %s (mode: %s)", 
+            LOG_INFO(EventSource::SYSTEM, "Pin %d: %s (mode: %s)",
                      entry.first, entry.second.ownerName, modeStr);
         }
     }
-    
+
     LOG_INFO(EventSource::SYSTEM, "=============================");
 }
 
 // PWM resource management
-bool HardwareManager::requestPWMFrequency(uint8_t pin, uint32_t frequency, const char* owner)
+bool HardwareManager::requestPWMFrequency(uint8_t pin, uint32_t frequency, const char *owner)
 {
     PWMTimerGroup group = getPWMTimerGroup(pin);
-    if (group == TIMER_GROUP_UNKNOWN) {
+    if (group == TIMER_GROUP_UNKNOWN)
+    {
         LOG_ERROR(EventSource::SYSTEM, "Unknown PWM timer group for pin %d", pin);
         return false;
     }
 
     // Check if timer group already configured
     auto it = pwmConfigs.find(group);
-    if (it != pwmConfigs.end()) {
-        if (it->second.frequency != frequency) {
+    if (it != pwmConfigs.end())
+    {
+        if (it->second.frequency != frequency)
+        {
             // Check if it's the same owner trying to change frequency
-            if (strcmp(it->second.owner, owner) == 0) {
+            if (strcmp(it->second.owner, owner) == 0)
+            {
                 // Same owner can change their own frequency
                 analogWriteFrequency(pin, frequency);
-                LOG_DEBUG(EventSource::SYSTEM, "PWM timer group %d frequency changed to %luHz by %s", 
-                        group, frequency, owner);
+                LOG_DEBUG(EventSource::SYSTEM, "PWM timer group %d frequency changed to %luHz by %s",
+                          group, frequency, owner);
                 it->second.frequency = frequency;
                 return true;
-            } else {
+            }
+            else
+            {
                 // Different owner - conflict
-                LOG_WARNING(EventSource::SYSTEM, 
-                    "PWM frequency conflict on timer group %d: %s wants %luHz, %s has %luHz",
-                    group, owner, frequency, it->second.owner, it->second.frequency);
+                LOG_WARNING(EventSource::SYSTEM,
+                            "PWM frequency conflict on timer group %d: %s wants %luHz, %s has %luHz",
+                            group, owner, frequency, it->second.owner, it->second.frequency);
                 return false;
             }
         }
@@ -392,17 +422,19 @@ bool HardwareManager::requestPWMFrequency(uint8_t pin, uint32_t frequency, const
     return true;
 }
 
-bool HardwareManager::requestPWMResolution(uint8_t resolution, const char* owner)
+bool HardwareManager::requestPWMResolution(uint8_t resolution, const char *owner)
 {
-    if (globalPWMResolution != resolution && 
-        strcmp(pwmResolutionOwner, "default") != 0) {
-        LOG_WARNING(EventSource::SYSTEM, 
-            "PWM resolution conflict: %s wants %d-bit, %s has %d-bit",
-            owner, resolution, pwmResolutionOwner, globalPWMResolution);
+    if (globalPWMResolution != resolution &&
+        strcmp(pwmResolutionOwner, "default") != 0)
+    {
+        LOG_WARNING(EventSource::SYSTEM,
+                    "PWM resolution conflict: %s wants %d-bit, %s has %d-bit",
+                    owner, resolution, pwmResolutionOwner, globalPWMResolution);
         return false;
     }
 
-    if (globalPWMResolution != resolution) {
+    if (globalPWMResolution != resolution)
+    {
         analogWriteResolution(resolution);
         globalPWMResolution = resolution;
         pwmResolutionOwner = owner;
@@ -424,39 +456,62 @@ uint8_t HardwareManager::getPWMResolution() const
 
 HardwareManager::PWMTimerGroup HardwareManager::getPWMTimerGroup(uint8_t pin)
 {
-    switch (pin) {
-        case 0: case 1: case 24: case 25: case 28: case 29:
-            return TIMER_GROUP_1;
-        case 2: case 3:
-            return TIMER_GROUP_2;
-        case 4: case 33:
-            return TIMER_GROUP_3;
-        case 5:
-            return TIMER_GROUP_4;
-        case 6: case 9: case 10: case 11: case 12: case 13: case 32:
-            return TIMER_GROUP_5;
-        case 7: case 8: case 36: case 37:
-            return TIMER_GROUP_6;
-        case 14: case 15: case 18: case 19:
-            return TIMER_GROUP_7;
-        case 22: case 23:
-            return TIMER_GROUP_8;
-        default:
-            return TIMER_GROUP_UNKNOWN;
+    switch (pin)
+    {
+    case 0:
+    case 1:
+    case 24:
+    case 25:
+    case 28:
+    case 29:
+        return TIMER_GROUP_1;
+    case 2:
+    case 3:
+        return TIMER_GROUP_2;
+    case 4:
+    case 33:
+        return TIMER_GROUP_3;
+    case 5:
+        return TIMER_GROUP_4;
+    case 6:
+    case 9:
+    case 10:
+    case 11:
+    case 12:
+    case 13:
+    case 32:
+        return TIMER_GROUP_5;
+    case 7:
+    case 8:
+    case 36:
+    case 37:
+        return TIMER_GROUP_6;
+    case 14:
+    case 15:
+    case 18:
+    case 19:
+        return TIMER_GROUP_7;
+    case 22:
+    case 23:
+        return TIMER_GROUP_8;
+    default:
+        return TIMER_GROUP_UNKNOWN;
     }
 }
 
 // ADC resource management
-bool HardwareManager::requestADCConfig(ADCModule module, uint8_t resolution, uint8_t averaging, const char* owner)
+bool HardwareManager::requestADCConfig(ADCModule module, uint8_t resolution, uint8_t averaging, const char *owner)
 {
     auto it = adcConfigs.find(module);
-    if (it != adcConfigs.end()) {
+    if (it != adcConfigs.end())
+    {
         // Check for conflicts
-        if (it->second.resolution != resolution || it->second.averaging != averaging) {
-            LOG_WARNING(EventSource::SYSTEM, 
-                "ADC%d config conflict: %s wants %d-bit/%d avg, %s has %d-bit/%d avg",
-                module, owner, resolution, averaging, 
-                it->second.owner, it->second.resolution, it->second.averaging);
+        if (it->second.resolution != resolution || it->second.averaging != averaging)
+        {
+            LOG_WARNING(EventSource::SYSTEM,
+                        "ADC%d config conflict: %s wants %d-bit/%d avg, %s has %d-bit/%d avg",
+                        module, owner, resolution, averaging,
+                        it->second.owner, it->second.resolution, it->second.averaging);
             return false;
         }
         return true;
@@ -464,29 +519,34 @@ bool HardwareManager::requestADCConfig(ADCModule module, uint8_t resolution, uin
 
     // Store config (actual ADC configuration done by owner)
     adcConfigs[module] = {resolution, averaging, owner};
-    LOG_INFO(EventSource::SYSTEM, "ADC%d config: %d-bit, %d averaging by %s", 
+    LOG_INFO(EventSource::SYSTEM, "ADC%d config: %d-bit, %d averaging by %s",
              module, resolution, averaging, owner);
     return true;
 }
 
 // I2C resource management
-bool HardwareManager::requestI2CSpeed(I2CBus bus, uint32_t speed, const char* owner)
+bool HardwareManager::requestI2CSpeed(I2CBus bus, uint32_t speed, const char *owner)
 {
     auto it = i2cConfigs.find(bus);
-    if (it != i2cConfigs.end()) {
-        if (it->second.clockSpeed != speed) {
+    if (it != i2cConfigs.end())
+    {
+        if (it->second.clockSpeed != speed)
+        {
             // Allow speed increase but warn
-            if (speed > it->second.clockSpeed) {
-                LOG_WARNING(EventSource::SYSTEM, 
-                    "I2C bus %d speed increased from %luHz to %luHz by %s (was set by %s)",
-                    bus, it->second.clockSpeed, speed, owner, it->second.owner);
+            if (speed > it->second.clockSpeed)
+            {
+                LOG_WARNING(EventSource::SYSTEM,
+                            "I2C bus %d speed increased from %luHz to %luHz by %s (was set by %s)",
+                            bus, it->second.clockSpeed, speed, owner, it->second.owner);
                 it->second.clockSpeed = speed;
                 it->second.owner = owner;
                 return true;
-            } else {
-                LOG_WARNING(EventSource::SYSTEM, 
-                    "I2C bus %d speed conflict: %s wants %luHz, %s has %luHz",
-                    bus, owner, speed, it->second.owner, it->second.clockSpeed);
+            }
+            else
+            {
+                LOG_WARNING(EventSource::SYSTEM,
+                            "I2C bus %d speed conflict: %s wants %luHz, %s has %luHz",
+                            bus, owner, speed, it->second.owner, it->second.clockSpeed);
                 return false;
             }
         }
@@ -501,27 +561,30 @@ bool HardwareManager::requestI2CSpeed(I2CBus bus, uint32_t speed, const char* ow
 void HardwareManager::printResourceStatus()
 {
     LOG_INFO(EventSource::SYSTEM, "=== Hardware Resource Status ===");
-    
+
     // PWM Status
-    LOG_INFO(EventSource::SYSTEM, "PWM Resolution: %d-bit (owner: %s)", 
+    LOG_INFO(EventSource::SYSTEM, "PWM Resolution: %d-bit (owner: %s)",
              globalPWMResolution, pwmResolutionOwner);
-    
-    for (const auto& pwm : pwmConfigs) {
+
+    for (const auto &pwm : pwmConfigs)
+    {
         LOG_INFO(EventSource::SYSTEM, "PWM Timer Group %d: %luHz (owner: %s)",
                  pwm.first, pwm.second.frequency, pwm.second.owner);
     }
-    
+
     // ADC Status
-    for (const auto& adc : adcConfigs) {
+    for (const auto &adc : adcConfigs)
+    {
         LOG_INFO(EventSource::SYSTEM, "ADC%d: %d-bit, %d avg (owner: %s)",
                  adc.first, adc.second.resolution, adc.second.averaging, adc.second.owner);
     }
-    
+
     // I2C Status
-    for (const auto& i2c : i2cConfigs) {
+    for (const auto &i2c : i2cConfigs)
+    {
         LOG_INFO(EventSource::SYSTEM, "I2C Bus %d: %luHz (owner: %s)",
                  i2c.first, i2c.second.clockSpeed, i2c.second.owner);
     }
-    
+
     LOG_INFO(EventSource::SYSTEM, "=================================");
 }
