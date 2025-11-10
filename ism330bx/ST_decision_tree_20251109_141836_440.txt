@@ -1,0 +1,68 @@
+F3_MEAN_GYR_Z_FILTER_2 <= -0.071762 : Turning (120)
+F3_MEAN_GYR_Z_FILTER_2 > -0.071762
+|   F3_MEAN_GYR_Z_FILTER_2 <= 0.047760
+|   |   F1_MEAN_ACC_X_FILTER_1 <= -0.012775
+|   |   |   F1_MEAN_ACC_X_FILTER_1 <= -0.013104
+|   |   |   |   F4_VARIANCE_ACC_V2_FILTER_3 <= 0.003052
+|   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 <= -0.022774
+|   |   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 <= -0.057678 : Slope (13)
+|   |   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 > -0.057678 : Rough (3)
+|   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 > -0.022774
+|   |   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 <= 0.041290 : Straight (86/5.0)
+|   |   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 > 0.041290 : Slope (11)
+|   |   |   |   F4_VARIANCE_ACC_V2_FILTER_3 > 0.003052
+|   |   |   |   |   F3_MEAN_GYR_Z_FILTER_2 <= 0.021996
+|   |   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 <= 0.060440 : Rough (19)
+|   |   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 > 0.060440 : Slope (1)
+|   |   |   |   |   F3_MEAN_GYR_Z_FILTER_2 > 0.021996 : Slope (1)
+|   |   |   F1_MEAN_ACC_X_FILTER_1 > -0.013104
+|   |   |   |   F3_MEAN_GYR_Z_FILTER_2 <= -0.004861 : Rough (1)
+|   |   |   |   F3_MEAN_GYR_Z_FILTER_2 > -0.004861
+|   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 <= -0.037292 : Slope (1)
+|   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 > -0.037292
+|   |   |   |   |   |   F3_MEAN_GYR_Z_FILTER_2 <= -0.000650 : Stationary (90)
+|   |   |   |   |   |   F3_MEAN_GYR_Z_FILTER_2 > -0.000650 : Straight (3)
+|   |   F1_MEAN_ACC_X_FILTER_1 > -0.012775
+|   |   |   F4_VARIANCE_ACC_V2_FILTER_3 <= 0.003418
+|   |   |   |   F2_MEAN_ACC_Y_FILTER_1 <= 0.038162
+|   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 <= -0.043457 : Slope (16/1.0)
+|   |   |   |   |   F2_MEAN_ACC_Y_FILTER_1 > -0.043457 : Straight (161/9.0)
+|   |   |   |   F2_MEAN_ACC_Y_FILTER_1 > 0.038162 : Slope (18)
+|   |   |   F4_VARIANCE_ACC_V2_FILTER_3 > 0.003418 : Rough (25/4.0)
+|   F3_MEAN_GYR_Z_FILTER_2 > 0.047760
+|   |   F1_MEAN_ACC_X_FILTER_1 <= -0.036842 : Rough (1)
+|   |   F1_MEAN_ACC_X_FILTER_1 > -0.036842 : Turning (120)
+
+Number of Leaves: 18
+Size of the tree: 35
+
+Classes:
+=> Stationary, Straight, Turning, Slope, Rough
+
+Features:
+=> F1_MEAN_ACC_X_FILTER_1, F2_MEAN_ACC_Y_FILTER_1, F3_MEAN_GYR_Z_FILTER_2, F4_VARIANCE_ACC_V2_FILTER_3
+
+=============== Complete trainging data statistics ===============
+
+Confusion Matrix:
+           Stationary	Straight	Turning	Slope	Rough	  <- classified as
+Stationary 90	0	0	0	0	
+Straight   0	236	0	0	4	
+Turning    0	0	240	0	0	
+Slope      0	0	0	60	0	
+Rough      0	14	0	1	45	
+
+Total Number of Instances: 690
+Correctly Classified Instances: 671
+Incorrectly Classified Instances: 19
+
+Accuracy:       97.25 %
+Cohen's kappa:  96.19 %
+
+Report:    precision	recall	support
+Stationary 1.00	1.00	90
+Straight   0.94	0.98	240
+Turning    1.00	1.00	240
+Slope      0.98	1.00	60
+Rough      0.92	0.75	60
+avg/total  0.97	0.97	690

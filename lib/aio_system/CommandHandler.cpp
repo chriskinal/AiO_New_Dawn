@@ -217,7 +217,6 @@ void CommandHandler::handleCommand(char cmd) {
     }
 }
 
-
 void CommandHandler::showMenu() {
     loggerPtr->printConfig();
     Serial.print("\r\n=== Firmware Controls ===");

@@ -487,10 +487,12 @@ void setup()
   scheduler.addTask(SimpleScheduler::EVERY_LOOP, taskGPS1Serial, "GPS1 Serial");
   scheduler.addTask(SimpleScheduler::EVERY_LOOP, taskGPS2Serial, "GPS2 Serial");
 
-  // Add these as EVERY_LOOP for now (they have no timing currently)
+  // Serial IMU processing (BNO085, TM171) - needs EVERY_LOOP for byte-by-byte processing
   scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    imuProcessor.process();
-  }, "IMU");
+    imuProcessor.processSerialIMU();
+  }, "IMU Serial");
+
+  // Add these as EVERY_LOOP for now (they have no timing currently)
   scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
     adProcessor.process();
   }, "ADProcessor");
@@ -507,9 +509,6 @@ void setup()
     MachineProcessor::getInstance()->process();
   }, "Machine");
   scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
-    pwmProcessor.process();
-  }, "PWM");
-  scheduler.addTask(SimpleScheduler::EVERY_LOOP, []{
     KickoutMonitor::getInstance()->process();
   }, "Kickout Monitor");
 
@@ -518,14 +517,21 @@ void setup()
   scheduler.addTask(SimpleScheduler::HZ_100, taskWebHandleClient, "Web Client");
   scheduler.addTask(SimpleScheduler::HZ_100, taskWebBroadcastTelemetry, "Web Telemetry");
 
-  // Add 50Hz tasks (motor control)
+  // Add 50Hz tasks (motor control and I2C IMU)
   scheduler.addTask(SimpleScheduler::HZ_50, taskMotorDriver, "Motor Driver");
+  // I2C IMU processing (ISM330BX) - 50Hz matches sensor capabilities (30Hz ODR with headroom)
+  scheduler.addTask(SimpleScheduler::HZ_50, []{
+    imuProcessor.processI2CIMU();
+  }, "IMU I2C");
 
-  // Add 10Hz tasks (UI and status)
+  // Add 10Hz tasks (UI, status, and PWM speed pulse)
   scheduler.addTask(SimpleScheduler::HZ_10, taskLEDUpdate, "LED Update");
   scheduler.addTask(SimpleScheduler::HZ_10, taskNetworkCheck, "Network Check");
   scheduler.addTask(SimpleScheduler::HZ_10, taskNAVProcess, "NAV Process");
   scheduler.addTask(SimpleScheduler::HZ_10, taskKickoutSendPGN250, "PGN250 Send");
+  scheduler.addTask(SimpleScheduler::HZ_10, []{
+    pwmProcessor.process();
+  }, "PWM");
   // Buffer stats disabled - only enable when actually monitoring
   // scheduler.addTask(SimpleScheduler::HZ_10, taskBufferStats, "Buffer Stats");
   scheduler.addTask(SimpleScheduler::HZ_10, []{
@@ -533,7 +539,7 @@ void setup()
   }, "CommandHandler");
 
   LOG_INFO(EventSource::SYSTEM, "SimpleScheduler initialized with %d tasks",
-           5 + 8 + 3 + 1 + 5); // EVERY_LOOP + 100Hz + 50Hz + 10Hz
+           12 + 3 + 2 + 6); // EVERY_LOOP + 100Hz + 50Hz + 10Hz (one is commented out)
 
   // Display access information
   localIP = Ethernet.localIP();  // Reuse existing variable

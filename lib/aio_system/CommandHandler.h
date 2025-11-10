@@ -11,20 +11,19 @@ extern void toggleLoopTiming();
 class CommandHandler {
 private:
     static CommandHandler* instance;
-    
+
     // Pointers to system components
     MachineProcessor* machinePtr = nullptr;
     EventLogger* loggerPtr = nullptr;
-    
+
     // Private constructor for singleton
     CommandHandler();
-    
+
     // Command handler
     void handleCommand(char cmd);
-    
+
     // Menu display function
     void showMenu();
-    
 
 public:
     ~CommandHandler();

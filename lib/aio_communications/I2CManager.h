@@ -8,6 +8,8 @@
 // Common I2C device addresses
 #define BNO08X_DEFAULT_ADDRESS  0x4A  // BNO08x IMU default address
 #define BNO08X_ALT_ADDRESS      0x4B  // BNO08x IMU alternate address
+#define ISM330BX_ADDRESS_PRIMARY   0x6A  // ISM330BX IMU with SDO/SA0 = GND
+#define ISM330BX_ADDRESS_SECONDARY 0x6B  // ISM330BX IMU with SDO/SA0 = VDD
 #define CMPS14_ADDRESS          0x60  // CMPS14 compass
 #define ADS1115_ADDRESS_GND     0x48  // ADS1115 ADC with ADDR->GND
 #define ADS1115_ADDRESS_VDD     0x49  // ADS1115 ADC with ADDR->VDD
@@ -25,6 +27,7 @@
 enum class I2CDeviceType {
     UNKNOWN,
     BNO08X,
+    ISM330BX,
     CMPS14,
     ADS1115,
     MCP23017,

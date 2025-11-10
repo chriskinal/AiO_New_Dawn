@@ -2,7 +2,7 @@
 #define VERSION_H
 
 // AiO New Dawn firmware version
-#define FIRMWARE_VERSION "1.0.119-beta" // Merge motor soft start improvements + valve ready check
+#define FIRMWARE_VERSION "1.0.120-beta" // ISM330BX IMU integration + scheduler optimizations
 
 // Teensy board type for OTA identification
 #define TEENSY_BOARD_TYPE "Teensy41"

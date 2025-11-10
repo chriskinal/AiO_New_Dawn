@@ -79,14 +79,14 @@ bool SerialManager::initializeSerialPorts()
     SerialESP32.addMemoryForRead(esp32RxBuffer, sizeof(esp32RxBuffer));
     SerialESP32.addMemoryForWrite(esp32TxBuffer, sizeof(esp32TxBuffer));
 
-    // IMU Serial
-    serialIMU->begin(BAUD_IMU);
+    // IMU Serial - DISABLED to free pins 16/17 for I2C1 (Wire1)
+    // serialIMU->begin(BAUD_IMU);
 
     LOG_DEBUG(EventSource::SYSTEM, "SerialGPS1/GPS2: %i baud", BAUD_GPS);
     LOG_DEBUG(EventSource::SYSTEM, "SerialRadio: %lu baud", radioBaud);
     LOG_DEBUG(EventSource::SYSTEM, "SerialRS232: %i baud", BAUD_RS232);
     LOG_DEBUG(EventSource::SYSTEM, "SerialESP32: %i baud", BAUD_ESP32);
-    LOG_DEBUG(EventSource::SYSTEM, "SerialIMU: %i baud", BAUD_IMU);
+    // LOG_DEBUG(EventSource::SYSTEM, "SerialIMU: %i baud", BAUD_IMU);
 
     return true;
 }

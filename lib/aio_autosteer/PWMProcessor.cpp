@@ -12,8 +12,7 @@ PWMProcessor::PWMProcessor() :
     pulseDuty(0.5f),        // 50% duty cycle default
     pulseEnabled(false),
     currentSpeedKmh(0.0f),
-    pulsesPerMeter(1.0f),   // Default 1 pulse per meter
-    lastSpeedUpdate(0)
+    pulsesPerMeter(1.0f)    // Default 1 pulse per meter
 {
     instance = this;
 }
@@ -78,34 +77,31 @@ bool PWMProcessor::init()
 
 void PWMProcessor::process()
 {
-    // Update PWM speed pulse from GPS every 200ms
-    if (millis() - lastSpeedUpdate > 200)  // Update every 200ms like V6-NG
+    // Update PWM speed pulse from GPS - called by scheduler at 10Hz
+    // No internal rate limiting needed - scheduler controls the rate
+
+    if (pulseEnabled)
     {
-        lastSpeedUpdate = millis();
-        
-        if (pulseEnabled)
+        float speedKmh = 0.0f;
+
+        // Use actual GPS speed
+        extern GNSSProcessor gnssProcessor;
+        const auto &gpsData = gnssProcessor.getData();
+        if (gpsData.hasVelocity)
         {
-            float speedKmh = 0.0f;
-            
-            // Use actual GPS speed
-            extern GNSSProcessor gnssProcessor;
-            const auto &gpsData = gnssProcessor.getData();
-            if (gpsData.hasVelocity)
-            {
-                // Convert knots to km/h
-                speedKmh = gpsData.speedKnots * 1.852f;
-            }
-            else
-            {
-                // Fallback to PGN 254 speed if GPS velocity is not available
-                // This is useful for systems that are running in SIM mode
-                // - could also always use PGN254 speed as it returns GPS speed if available
-                speedKmh = AutosteerProcessor::getInstance()->getVehicleSpeed();
-            }
-            
-            // Set the speed
-            setSpeedKmh(speedKmh);
+            // Convert knots to km/h
+            speedKmh = gpsData.speedKnots * 1.852f;
         }
+        else
+        {
+            // Fallback to PGN 254 speed if GPS velocity is not available
+            // This is useful for systems that are running in SIM mode
+            // - could also always use PGN254 speed as it returns GPS speed if available
+            speedKmh = AutosteerProcessor::getInstance()->getVehicleSpeed();
+        }
+
+        // Set the speed
+        setSpeedKmh(speedKmh);
     }
 }
 

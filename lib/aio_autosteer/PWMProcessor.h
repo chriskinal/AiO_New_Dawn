@@ -68,10 +68,7 @@ private:
     // Speed-based generation
     float currentSpeedKmh;
     float pulsesPerMeter;
-    
-    // Timing
-    uint32_t lastSpeedUpdate;
-    
+
     // Helper methods
     void updatePWM();
     float speedToFrequency(float speedKmh) const;

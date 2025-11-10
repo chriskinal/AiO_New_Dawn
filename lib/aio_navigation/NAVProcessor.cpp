@@ -376,15 +376,7 @@ void NAVProcessor::process() {
     // Check if UDP passthrough is enabled - if so, don't send PANDA/PAOGI
     extern ConfigManager configManager;
     bool passthroughEnabled = configManager.getGPSPassThrough();
-    
-    // Debug log periodically
-    static uint32_t lastDebugLog = 0;
-    if (millis() - lastDebugLog > 5000) {
-        lastDebugLog = millis();
-        LOG_DEBUG(EventSource::GNSS, "NAVProcessor: UDP passthrough is %s", 
-                  passthroughEnabled ? "ENABLED" : "DISABLED");
-    }
-    
+
     if (passthroughEnabled) {
         return;  // UDP passthrough is enabled, skip PANDA/PAOGI messages
     }
@@ -410,10 +402,10 @@ void NAVProcessor::process() {
     
     // Track message type changes
     static NavMessageType lastMsgType = NavMessageType::NONE;
-    
+
     if (msgType != lastMsgType) {
         if (msgType != NavMessageType::NONE) {
-            LOG_DEBUG(EventSource::GNSS, "Switching to %s messages", 
+            LOG_INFO(EventSource::GNSS, "Switching to %s messages",
                       msgType == NavMessageType::PANDA ? "PANDA" : "PAOGI");
         }
         lastMsgType = msgType;

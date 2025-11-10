@@ -192,15 +192,19 @@ I2CDeviceType I2CManager::identifyDevice(TwoWire& wire, uint8_t address) {
             // Could be BNO08x or ADS1115, need further detection
             // For now, assume BNO08x as it's more common in this application
             return I2CDeviceType::BNO08X;
-            
+
+        case ISM330BX_ADDRESS_PRIMARY:
+        case ISM330BX_ADDRESS_SECONDARY:
+            return I2CDeviceType::ISM330BX;
+
         case CMPS14_ADDRESS:
             return I2CDeviceType::CMPS14;
-            
+
         case ADS1115_ADDRESS_GND:
         case ADS1115_ADDRESS_VDD:
             // These addresses are unique to ADS1115
             return I2CDeviceType::ADS1115;
-            
+
         case MCP23017_ADDRESS:
         case MCP23017_ADDRESS + 1:
         case MCP23017_ADDRESS + 2:
@@ -210,10 +214,10 @@ I2CDeviceType I2CManager::identifyDevice(TwoWire& wire, uint8_t address) {
         case MCP23017_ADDRESS + 6:
         case MCP23017_ADDRESS + 7:
             return I2CDeviceType::MCP23017;
-            
+
         case PCA9685_ADDRESS:
             return I2CDeviceType::PCA9685;
-            
+
         default:
             return I2CDeviceType::GENERIC;
     }
@@ -231,6 +235,8 @@ const char* I2CManager::getDeviceTypeName(I2CDeviceType type) {
     switch (type) {
         case I2CDeviceType::BNO08X:
             return "BNO08x IMU";
+        case I2CDeviceType::ISM330BX:
+            return "ISM330BX IMU with MLC";
         case I2CDeviceType::CMPS14:
             return "CMPS14 Compass";
         case I2CDeviceType::ADS1115:

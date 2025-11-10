@@ -13,7 +13,7 @@ IMUProcessor *IMUProcessor::instance = nullptr;
 IMUProcessor::IMUProcessor()
     : serialMgr(nullptr), detectedType(IMUType::NONE), isInitialized(false),
       bnoParser(nullptr), imuSerial(&SerialIMU), tm171Parser(nullptr),
-      timeSinceLastPacket(0)
+      ism330bxProcessor(nullptr), timeSinceLastPacket(0)
 {
     instance = this;
 
@@ -32,6 +32,11 @@ IMUProcessor::~IMUProcessor()
     {
         delete tm171Parser;
         tm171Parser = nullptr;
+    }
+    if (ism330bxProcessor)
+    {
+        delete ism330bxProcessor;
+        ism330bxProcessor = nullptr;
     }
     instance = nullptr;
 }
@@ -66,15 +71,23 @@ bool IMUProcessor::initialize()
 
     // Try to detect IMU type by attempting initialization
     LOG_INFO(EventSource::IMU, "Detecting IMU type...");
-    
-    // Try BNO085 first
+
+    // Try ISM330BX first (I2C-based, fast to detect)
+    if (initISM330BX()) {
+        detectedType = IMUType::ISM330BX;
+        isInitialized = true;
+        LOG_INFO(EventSource::IMU, "ISM330BX detected");
+        return true;
+    }
+
+    // Try BNO085
     if (initBNO085()) {
         detectedType = IMUType::BNO085;
         isInitialized = true;
         LOG_INFO(EventSource::IMU, "BNO085 detected");
         return true;
     }
-    
+
     // Try TM171
     if (initTM171()) {
         detectedType = IMUType::TM171;
@@ -82,7 +95,7 @@ bool IMUProcessor::initialize()
         LOG_INFO(EventSource::IMU, "TM171 detected");
         return true;
     }
-    
+
     // No IMU detected
     detectedType = IMUType::NONE;
     isInitialized = false;
@@ -184,6 +197,20 @@ bool IMUProcessor::initTM171()
 
 void IMUProcessor::process()
 {
+    // Legacy method - calls appropriate process method based on IMU type
+    // Kept for backward compatibility
+    if (detectedType == IMUType::ISM330BX) {
+        processI2CIMU();
+    } else {
+        processSerialIMU();
+    }
+}
+
+void IMUProcessor::processSerialIMU()
+{
+    // Process serial-based IMUs (BNO085, TM171)
+    // Should be called from EVERY_LOOP to process incoming serial bytes
+
     // If no IMU detected, still check for serial data to detect invalid data
     if (!isInitialized && serialMgr && imuSerial)
     {
@@ -200,7 +227,7 @@ void IMUProcessor::process()
         }
         return;
     }
-    
+
     if (!isInitialized)
         return;
 
@@ -215,7 +242,22 @@ void IMUProcessor::process()
         break;
 
     default:
+        // Not a serial IMU - nothing to do
         break;
+    }
+}
+
+void IMUProcessor::processI2CIMU()
+{
+    // Process I2C-based IMUs (ISM330BX)
+    // Should be called from a timed scheduler group (e.g., 50Hz)
+    // No need for rate limiting here - scheduler controls the rate
+
+    if (!isInitialized)
+        return;
+
+    if (detectedType == IMUType::ISM330BX) {
+        processISM330BXData();
     }
 }
 
@@ -232,7 +274,7 @@ void IMUProcessor::processBNO085Data()
         lastSerialDataTime = millis();
         bnoParser->processByte(byte);
     }
-    
+
     // Update current data if valid
     if (bnoParser->isDataValid())
     {
@@ -260,6 +302,14 @@ void IMUProcessor::processBNO085Data()
 
         // Update statistics
         timeSinceLastPacket = 0;
+
+        // Periodic DEBUG level logging (every 500ms for dynamic monitoring)
+        static uint32_t lastDebugLog = 0;
+        if (millis() - lastDebugLog > 500) {
+            lastDebugLog = millis();
+            LOG_DEBUG(EventSource::IMU, "BNO085: Heading=%.1f° Roll=%.1f° Pitch=%.1f° YawRate=%.1f°/s Quality=%d/10",
+                     currentData.heading, currentData.roll, currentData.pitch, currentData.yawRate, currentData.quality);
+        }
     }
     else if (bnoParser->getTimeSinceLastValid() > 100)
     {
@@ -296,6 +346,14 @@ void IMUProcessor::processTM171Data()
             // Update statistics from parser
             // TM171 packet received
             timeSinceLastPacket = 0;
+
+            // Periodic DEBUG level logging (every 500ms for dynamic monitoring)
+            static uint32_t lastDebugLog = 0;
+            if (millis() - lastDebugLog > 500) {
+                lastDebugLog = millis();
+                LOG_DEBUG(EventSource::IMU, "TM171: Heading=%.1f° Roll=%.1f° Pitch=%.1f° YawRate=%.1f°/s Quality=%d/10",
+                         currentData.heading, currentData.roll, currentData.pitch, currentData.yawRate, currentData.quality);
+            }
         }
     }
 
@@ -310,6 +368,8 @@ void IMUProcessor::processTM171Data()
 const char *IMUProcessor::getIMUTypeName() const
 {
     switch (detectedType) {
+        case IMUType::ISM330BX:
+            return "ISM330BX";
         case IMUType::BNO085:
             return "BNO085";
         case IMUType::TM171:
@@ -478,7 +538,97 @@ void IMUProcessor::sendIMUData()
     
     // Calculate and set CRC
     calculateAndSetCRC(imuData, sizeof(imuData));
-    
+
     // Send the data
     sendUDPbytes(imuData, sizeof(imuData));
+}
+
+bool IMUProcessor::initISM330BX()
+{
+    LOG_DEBUG(EventSource::IMU, "Initializing ISM330BX");
+
+    // Create ISM330BX processor
+    ism330bxProcessor = new ISM330BXProcessor();
+
+    // Try to initialize on Wire (I2C0) first, then Wire1, then Wire2
+    if (ism330bxProcessor->begin(&Wire, ISM330BX_ADDRESS_PRIMARY)) {
+        LOG_INFO(EventSource::IMU, "ISM330BX initialized on Wire at 0x6A");
+        return true;
+    }
+
+    if (ism330bxProcessor->begin(&Wire, ISM330BX_ADDRESS_SECONDARY)) {
+        LOG_INFO(EventSource::IMU, "ISM330BX initialized on Wire at 0x6B");
+        return true;
+    }
+
+    if (ism330bxProcessor->begin(&Wire1, ISM330BX_ADDRESS_PRIMARY)) {
+        LOG_INFO(EventSource::IMU, "ISM330BX initialized on Wire1 at 0x6A");
+        return true;
+    }
+
+    if (ism330bxProcessor->begin(&Wire1, ISM330BX_ADDRESS_SECONDARY)) {
+        LOG_INFO(EventSource::IMU, "ISM330BX initialized on Wire1 at 0x6B");
+        return true;
+    }
+
+    if (ism330bxProcessor->begin(&Wire2, ISM330BX_ADDRESS_PRIMARY)) {
+        LOG_INFO(EventSource::IMU, "ISM330BX initialized on Wire2 at 0x6A");
+        return true;
+    }
+
+    if (ism330bxProcessor->begin(&Wire2, ISM330BX_ADDRESS_SECONDARY)) {
+        LOG_INFO(EventSource::IMU, "ISM330BX initialized on Wire2 at 0x6B");
+        return true;
+    }
+
+    // No ISM330BX found
+    delete ism330bxProcessor;
+    ism330bxProcessor = nullptr;
+    LOG_DEBUG(EventSource::IMU, "ISM330BX not found on any I2C bus");
+    return false;
+}
+
+void IMUProcessor::processISM330BXData()
+{
+    if (!ism330bxProcessor)
+        return;
+
+    // Update sensor data
+    ism330bxProcessor->update();
+
+    // Get IMU data structure
+    IMUData data = ism330bxProcessor->getIMUData();
+
+    // Update current data
+    currentData.heading = data.heading;
+    currentData.roll = data.roll;
+    currentData.pitch = data.pitch;
+    currentData.yawRate = data.yawRate;
+    currentData.quality = data.quality;
+    currentData.timestamp = data.timestamp;
+    currentData.isValid = data.isValid;
+
+    // Update statistics
+    if (data.isValid) {
+        timeSinceLastPacket = 0;
+    }
+
+    // Periodic DEBUG level logging for IMU data (every 500ms for dynamic monitoring)
+    static uint32_t lastDebugLog = 0;
+    if (millis() - lastDebugLog > 500) {
+        lastDebugLog = millis();
+        if (data.isValid) {
+            LOG_DEBUG(EventSource::IMU, "ISM330BX: Heading=%.1f° Roll=%.1f° Pitch=%.1f° YawRate=%.1f°/s Quality=%d/10",
+                     data.heading, data.roll, data.pitch, data.yawRate, data.quality);
+        }
+    }
+
+    // INFO level logging for MLC state changes
+    static MLCState lastLoggedState = MLCState::UNKNOWN;
+    MLCState currentState = ism330bxProcessor->getMLCState();
+    if (currentState != lastLoggedState) {
+        LOG_INFO(EventSource::IMU, "MLC State changed: %s (Quality: %d/10)",
+                  ism330bxProcessor->getMLCStateString(), currentData.quality);
+        lastLoggedState = currentState;
+    }
 }
