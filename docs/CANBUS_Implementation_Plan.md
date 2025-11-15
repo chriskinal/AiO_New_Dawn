@@ -1,0 +1,384 @@
+# CANBUS Implementation Plan for AiO New Dawn
+
+## Overview
+This phased implementation plan includes specific milestones with compile/test checkpoints. No progression to the next milestone until all tests pass and issues are resolved.
+
+## Development Tools Required
+- **PCAN-View** or **CANalyzer** for message generation/monitoring
+- **Teensy 4.1** with CAN transceivers (MCP2562 or similar)
+- **CAN bus termination resistors** (120Ω)
+- **Test harness** with 3 CAN channels
+
+---
+
+## Phase 1: Foundation (Milestone 1.0)
+**Duration**: 5-7 days
+**Goal**: Establish basic CAN infrastructure
+
+### Tasks:
+1. Create basic library structure
+   ```
+   lib/aio_canbus/
+   ├── CANBUSConfig.h
+   ├── CANBUSManager.h/cpp
+   └── CANBUSProcessor.h/cpp
+   ```
+
+2. Implement minimal CANBUSManager
+   - FlexCAN_T4 initialization
+   - Basic message receive/transmit
+   - Singleton pattern
+   - Enable/disable functionality
+
+3. Add to PinOwnershipManager
+   - Reserve CAN1/2/3 pins
+   - Conflict detection
+
+4. SimpleScheduler integration
+   - Add 50Hz task
+   - Basic timing metrics
+
+### Milestone 1.0 Tests:
+```
+TEST PLAN 1.0: Basic CAN Communication
+1. Compile test
+   - [ ] Clean build successful
+   - [ ] No pin conflicts reported
+
+2. Loopback test (no external hardware)
+   - [ ] Send message on CAN1, receive same message
+   - [ ] Verify message integrity
+
+3. External CAN test
+   - [ ] Connect PCAN-USB to K_Bus
+   - [ ] Send test message ID 0x18EF1C00
+   - [ ] Verify reception in serial monitor
+   - [ ] Send response from Teensy
+   - [ ] Verify in PCAN-View
+
+4. Performance test
+   - [ ] Loop frequency remains >500kHz
+   - [ ] CAN task execution <50μs
+```
+
+**Success Criteria**: All tests pass, no memory leaks, stable operation for 10 minutes
+
+---
+
+## Phase 2: Message Handling (Milestone 2.0)
+**Duration**: 5-7 days
+**Goal**: Implement message routing and brand detection
+
+### Tasks:
+1. Create brand handler interface
+   ```cpp
+   class BrandHandlerInterface {
+       virtual void processKBusMessage(const CAN_message_t& msg) = 0;
+       virtual bool isSteerReady() const = 0;
+   };
+   ```
+
+2. Implement GenericBrandHandler
+   - Basic message logging
+   - Steer ready detection (ID 0x18EF1C00)
+   - Message filtering
+
+3. Add diagnostic capabilities
+   - Message counters
+   - Error tracking
+   - Web endpoint for status
+
+4. PGN integration
+   - Register for PGN 250 (status request)
+   - Send CAN status in PGN 253
+
+### Milestone 2.0 Tests:
+```
+TEST PLAN 2.0: Message Handling
+1. Message filtering test
+   - [ ] Send 1000 msgs/sec on each bus
+   - [ ] Verify only registered IDs processed
+   - [ ] No buffer overflows
+
+2. Steer ready detection (using PCAN-View)
+   Send on K_Bus:
+   - [ ] ID: 0x18EF1C00, Data: [0x00,0x10,0x00,0x00,0x00,0x00,0x00,0x00]
+   - [ ] Verify steerReady = true in diagnostics
+   - [ ] Stop sending for 500ms
+   - [ ] Verify steerReady = false (timeout)
+
+3. Web diagnostics test
+   - [ ] Browse to /api/canbus/status
+   - [ ] Verify message counts update
+   - [ ] Check JSON format validity
+
+4. PGN integration test
+   - [ ] Send PGN 250 from AgIO simulator
+   - [ ] Verify CAN status in PGN 253 response
+```
+
+**Test Data Generator Script** (PCAN-View):
+```
+// Save as steer_ready_test.pcs
+10ms: 18EF1C00h 8 00h 10h 00h 00h 00h 00h 00h 00h
+```
+
+**Success Criteria**: Stable message handling at 1000 msgs/sec per bus
+
+---
+
+## Phase 3: Fendt Integration (Milestone 3.0)
+**Duration**: 7-10 days
+**Goal**: Complete Fendt tractor support
+
+### Tasks:
+1. Implement FendtBrandHandler
+   - All Fendt variants (SCR, S4, Gen6, FendtOne)
+   - Steering curve messages
+   - Engage/disengage protocol
+
+2. Create CANSteerReadyDriver
+   - Implements MotorDriverInterface
+   - Coordinates with FendtBrandHandler
+   - PWM-to-CAN translation
+
+3. Web configuration
+   - Brand selection dropdown
+   - Module ID configuration
+   - Save to EEPROM
+
+4. Integration with AutosteerProcessor
+   - Motor type detection
+   - Smooth handover from PWM
+
+### Milestone 3.0 Tests:
+```
+TEST PLAN 3.0: Fendt Steering Control
+1. Brand detection test (Fendt S4)
+   V_Bus messages:
+   - [ ] 0CF02300h: Fendt S4 steering ready
+   - [ ] Verify brand auto-detected
+
+2. Steering command test
+   When autosteer engaged, send from AgIO:
+   - [ ] PGN 254 with steer angle = +10°
+   - [ ] Verify V_Bus message: 0CF02220h with correct curve
+   - [ ] Test range -40° to +40°
+
+3. Engage/Disengage test sequence
+   - [ ] Send steer ready (0CF02300h)
+   - [ ] AgIO: Send autosteer ON
+   - [ ] Verify engage message on V_Bus
+   - [ ] AgIO: Send autosteer OFF
+   - [ ] Verify disengage message
+   - [ ] Test safety timeout (stop ready messages)
+
+4. Stress test
+   - [ ] 100Hz steering updates for 5 minutes
+   - [ ] Random engage/disengage every 30 seconds
+   - [ ] Verify no missed commands
+```
+
+**Fendt Test Message Set** (PCAN-View):
+```
+// Steering ready (10ms cycle)
+10ms: 0CF02300h 8 00h 16h 00h 00h 00h 00h 00h 00h
+
+// Steering commands (will be generated by Teensy)
+// Expected: 0CF02220h with varying byte[1] for curve
+```
+
+**Success Criteria**: Full Fendt steering control via AgOpenGPS
+
+---
+
+## Phase 4: Multi-Brand Support (Milestone 4.0)
+**Duration**: 10-14 days
+**Goal**: Add Valtra, Claas, and CaseIH support
+
+### Tasks:
+1. Implement brand handlers
+   - ValtraBrandHandler
+   - ClaasBrandHandler
+   - CaseIHBrandHandler
+
+2. Brand detection logic
+   - Auto-detect based on CAN traffic
+   - Manual override option
+   - Detection confidence scoring
+
+3. Enhanced diagnostics
+   - Per-brand message decoding
+   - Visual CAN traffic monitor
+   - Message replay capability
+
+### Milestone 4.0 Tests:
+```
+TEST PLAN 4.0: Multi-Brand Support
+1. Brand switching test
+   - [ ] Start with no CAN traffic
+   - [ ] Send Valtra messages → Verify detection
+   - [ ] Switch to Claas messages → Verify switch
+   - [ ] Manual override to Fendt → Verify locked
+
+2. Valtra control test
+   K_Bus engage: 18EF52A0h
+   - [ ] Steering ready detection
+   - [ ] Engage/disengage commands
+   - [ ] Curve control messages
+
+3. Claas control test
+   ISO_Bus messages: 0CF02400h series
+   - [ ] Similar tests as Valtra
+
+4. Comparative test
+   - [ ] Run same AgIO simulation
+   - [ ] Test each brand for 2 minutes
+   - [ ] Verify consistent behavior
+```
+
+**Multi-Brand Test Generator**:
+```python
+# Python script using python-can
+import can
+import time
+
+brands = {
+    'fendt': {'id': 0x0CF02300, 'data': [0x00,0x16,0,0,0,0,0,0]},
+    'valtra': {'id': 0x18EF52A0, 'data': [0x00,0x10,0,0,0,0,0,0]},
+    'claas': {'id': 0x0CF02400, 'data': [0x00,0x01,0,0,0,0,0,0]}
+}
+
+# Cycle through brands every 30 seconds
+```
+
+**Success Criteria**: All brands respond identically to AgIO commands
+
+---
+
+## Phase 5: Advanced Features (Milestone 5.0)
+**Duration**: 7-10 days
+**Goal**: Hitch control, work switch, and safety features
+
+### Tasks:
+1. Implement auxiliary features
+   - Hitch position via CAN
+   - Work switch via CAN
+   - Section control messages
+
+2. Safety enhancements
+   - Redundant timeout monitoring
+   - Message integrity checking
+   - Emergency stop handling
+
+3. Performance optimization
+   - Message prioritization
+   - Selective ACK/NACK
+   - Buffer management
+
+4. Documentation
+   - User manual
+   - Wiring diagrams
+   - Troubleshooting guide
+
+### Milestone 5.0 Tests:
+```
+TEST PLAN 5.0: Advanced Features
+1. Hitch control test
+   - [ ] Send hitch up/down commands
+   - [ ] Verify position feedback
+   - [ ] Test work switch triggering
+
+2. Safety test suite
+   - [ ] CAN bus disconnect → Verify safe stop
+   - [ ] Corrupt messages → Verify rejection
+   - [ ] Overflow conditions → Verify recovery
+
+3. System integration test
+   - [ ] Full AgIO simulation with:
+     - GPS at 10Hz
+     - Steering at 100Hz
+     - Sections at 5Hz
+     - Hitch control active
+   - [ ] Run for 1 hour
+   - [ ] Monitor all metrics
+
+4. Final performance test
+   - [ ] Loop frequency >500kHz maintained
+   - [ ] CAN processing <100μs worst case
+   - [ ] Zero message drops over 1M messages
+```
+
+**Success Criteria**: Production-ready CANBUS support
+
+---
+
+## Test Equipment Setup
+
+### Hardware Configuration:
+```
+Teensy 4.1 CAN Connections:
+- CAN1 (Pins 22/23) → K_Bus → PCAN Ch1
+- CAN2 (Pins 0/1) → ISO_Bus → PCAN Ch2
+- CAN3 (Pins 30/31) → V_Bus → PCAN Ch3
+
+Each bus requires:
+- MCP2562 transceiver
+- 120Ω termination at each end
+- Common ground between all devices
+```
+
+### Software Tools:
+1. **PCAN-View**: Message generation and monitoring
+2. **AgIO Simulator**: Modified to send test PGNs without GPS
+3. **Chrome DevTools**: Monitor web endpoints
+4. **PlatformIO Monitor**: Debug output and diagnostics
+
+### Test Message Database:
+Create `test_messages.dbc` with all brand-specific messages for automated testing.
+
+---
+
+## Risk Mitigation
+
+1. **No Hardware Available**
+   - Use PCAN to simulate all tractor messages
+   - Create message replay from field recordings
+   - Partner with users for beta testing
+
+2. **Unknown Message Formats**
+   - Start with documented brands (Fendt, Valtra)
+   - Reverse engineer from existing implementations
+   - Leave hooks for future additions
+
+3. **Timing Issues**
+   - Strict 50Hz CAN processing
+   - Separate high/low priority queues
+   - Profiling at each milestone
+
+---
+
+## Success Metrics
+
+Each milestone must achieve:
+- ✅ Clean compilation
+- ✅ All unit tests pass
+- ✅ Integration tests complete
+- ✅ 10-minute stability test
+- ✅ Performance within targets
+- ✅ No regressions from previous milestones
+
+## Schedule Summary
+
+| Milestone | Duration | Cumulative | Key Deliverable |
+|-----------|----------|------------|-----------------|
+| 1.0 Foundation | 5-7 days | Week 1 | Basic CAN working |
+| 2.0 Messages | 5-7 days | Week 2 | Brand detection |
+| 3.0 Fendt | 7-10 days | Week 3-4 | First brand complete |
+| 4.0 Multi-Brand | 10-14 days | Week 5-6 | 4 brands supported |
+| 5.0 Advanced | 7-10 days | Week 7-8 | Production ready |
+
+**Total Duration**: 8 weeks with testing
+**Without issues**: 6 weeks minimum
+
+Each milestone includes buffer time for issue resolution. No advancement without full test suite passing.
