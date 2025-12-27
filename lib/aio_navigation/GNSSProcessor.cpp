@@ -502,6 +502,17 @@ bool GNSSProcessor::processMessage()
     {
         // Valid GPS message received
         // Note: lastUpdateTime is now set by individual message parsers
+
+        // get max DGPS age for logging
+        static float ageHigh = 0.0f;
+        if (gpsData.ageDGPS > ageHigh) ageHigh = gpsData.ageDGPS;
+
+        // calc DGPS age average for logging
+        static float ageAve = 0;
+        ageAve = ageAve * 0.99f + gpsData.ageDGPS * 0.01f;
+
+        static uint16_t messageCount = 0;
+        messageCount++;
         
         // Debug log to track hasDualHeading status after each message
         static uint32_t lastTraceTime = 0;
@@ -510,6 +521,11 @@ bool GNSSProcessor::processMessage()
             LOG_DEBUG(EventSource::GNSS, "GPS State: hasDualHeading=%d, hasINS=%d, hasPosition=%d, fixQual=%d, msgMask=0x%02X", 
                       gpsData.hasDualHeading, gpsData.hasINS, gpsData.hasPosition, 
                       gpsData.fixQuality, gpsData.messageTypeMask);
+
+            LOG_INFO(EventSource::GNSS, "DGPS Age Ave: %.1fs High: %.1fs Cnt: %u",
+                    ageAve, ageHigh, messageCount);
+            ageHigh = 0; // reset max after logging
+            messageCount = 0; // reset count after logging
         }
     }
 
@@ -1180,7 +1196,7 @@ bool GNSSProcessor::parseINSPVAXA()
                 }
                 
                 // Use time since update as age of DGPS for PAOGI message
-                gpsData.ageDGPS = (uint16_t)gpsData.timeSinceUpdate;
+                gpsData.ageDGPS = (float)gpsData.timeSinceUpdate;
             }
         }
     }
@@ -1561,7 +1577,7 @@ bool GNSSProcessor::parseGGAZeroCopy() {
 
     // Field 13: Age of DGPS
     if (fieldCount > 13) {
-        gpsData.ageDGPS = parseIntZeroCopy(fieldRefs[13]);
+        gpsData.ageDGPS = parseFloatZeroCopy(fieldRefs[13]);
     }
 
     // Set status flags
@@ -1644,7 +1660,7 @@ bool GNSSProcessor::parseGNSZeroCopy() {
 
     // Field 12: Age of DGPS (optional)
     if (fieldCount > 12 && fieldRefs[12].length > 0) {
-        gpsData.ageDGPS = parseIntZeroCopy(fieldRefs[12]);
+        gpsData.ageDGPS = parseFloatZeroCopy(fieldRefs[12]);
     }
 
     // Set status flags
@@ -1728,7 +1744,7 @@ bool GNSSProcessor::parseHPRZeroCopy() {
 
     // Field 7: Age (seconds)
     if (fieldRefs[7].length > 0) {
-        gpsData.ageDGPS = (uint16_t)(parseFloatZeroCopy(fieldRefs[7]) * 100); // Convert to centiseconds
+        gpsData.ageDGPS = parseFloatZeroCopy(fieldRefs[7]);
     }
 
     // Field 8: Reserved - skip
@@ -1750,7 +1766,7 @@ bool GNSSProcessor::parseHPRZeroCopy() {
 
     if (enableDebug) {
         LOG_DEBUG(EventSource::GNSS, "HPR processed: sats=%d, age=%.2f", 
-                  gpsData.numSatellites, gpsData.ageDGPS / 100.0f);
+                  gpsData.numSatellites, gpsData.ageDGPS);
     }
 
     return true;

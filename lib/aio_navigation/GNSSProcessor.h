@@ -44,7 +44,7 @@ public:
         uint8_t fixQuality; // 0=invalid, 1=GPS, 2=DGPS, 4=RTK, 5=Float
         uint8_t numSatellites;
         float hdop;
-        uint16_t ageDGPS; // seconds since last DGPS update
+        float ageDGPS; // seconds since last DGPS update
 
         // Velocity data
         float speedKnots;
