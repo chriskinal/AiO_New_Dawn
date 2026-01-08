@@ -1,0 +1,41 @@
+name: Release Firmware
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Build Teensy 4.1 firmware
+        run: pio run -e teensy41
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Rename firmware with version
+        run: |
+          cp .pio/build/teensy41/firmware.hex "Firmware_Teensy_AiO_${{ steps.version.outputs.VERSION }}.hex"
+
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "Firmware_Teensy_AiO_${{ steps.version.outputs.VERSION }}.hex"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
