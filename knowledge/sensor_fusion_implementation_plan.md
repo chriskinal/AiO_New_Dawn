@@ -80,14 +80,17 @@ Good tilt readings → Tilt-compensated position → Accurate heading → Correc
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ Receiver Type        │ Internal IMU? │ Tilt Problem?  │ Solution        │
 ├──────────────────────────────────────────────────────────────────────────┤
-│ UM981/UM982 (INS)    │ YES           │ SOLVED         │ Uses internal   │
+│ UM981 (INS)          │ YES           │ SOLVED         │ Uses internal   │
 │                      │               │                │ fusion, delivers│
 │                      │               │                │ corrected pos   │
+├──────────────────────────────────────────────────────────────────────────┤
+│ UM982 dual-antenna   │ NO            │ CHICKEN & EGG  │ Same as F9P     │
+│ (no internal IMU)    │               │                │ dual - limited  │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ F9P dual + ext IMU   │ External      │ WE SOLVE IT    │ Use BNO085/TM171│
 │                      │ (BNO/TM171)   │                │ for correction  │
 ├──────────────────────────────────────────────────────────────────────────┤
-│ F9P dual, no IMU     │ NO            │ CHICKEN & EGG  │ Limited - see   │
+│ F9P/UM982 dual,no IMU│ NO            │ CHICKEN & EGG  │ Limited - see   │
 │ (RELPOSNED/KSXT)     │               │                │ mitigations     │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ Single GPS + ext IMU │ External      │ WE SOLVE IT    │ Correct position│
@@ -117,10 +120,10 @@ Mitigations for dual-GPS-only systems (F9P without external IMU):
 - **Between updates**: Hold previous roll (acceptable at 10Hz, problematic at 5Hz on rough terrain)
 - **Recommendation**: Add external IMU (BNO085 ~$15) or upgrade to UM981
 
-**UM981/UM982 is the best solution**: Internal IMU handles tilt compensation automatically, delivers corrected position via INSPVAXA, no chicken-and-egg problem.
+**UM981 is the best solution**: Internal IMU handles tilt compensation automatically, delivers corrected position via INSPVAXA, no chicken-and-egg problem. Note: UM982 is dual-antenna only (no internal IMU) - same limitations as F9P.
 
 1. Implement tilt source manager
-   - Priority 1: UM981/UM982 INS (position already corrected, just use roll for display)
+   - Priority 1: UM981 INS (position already corrected, just use roll for display)
    - Priority 2: External IMU roll/pitch (BNO085/TM171) - 100Hz, fast response
    - Priority 3: Dual-GPS roll (from RELPOSNED or KSXT) - 5-10Hz, limited
    - Automatic failover with quality tracking
@@ -154,7 +157,7 @@ Mitigations for dual-GPS-only systems (F9P without external IMU):
    │ Source          │ Has internal IMU? │ Position tilt-compensated?  │
    ├────────────────────────────────────────────────────────────────────┤
    │ UM981 INSPVAXA  │ YES (onboard)     │ YES - DO NOT double-correct │
-   │ UM982 INSPVAXA  │ YES (onboard)     │ YES - DO NOT double-correct │
+   │ UM982 KSXT      │ NO (dual-ant only)│ NO - we must correct        │
    │ F9P RELPOSNED   │ NO                │ NO - we must correct        │
    │ Dual-GPS KSXT   │ NO                │ NO - we must correct        │
    │ Single GPS+IMU  │ External BNO/TM   │ NO - we must correct        │
@@ -162,13 +165,13 @@ Mitigations for dual-GPS-only systems (F9P without external IMU):
    └────────────────────────────────────────────────────────────────────┘
    ```
 
-   - **For UM981/UM982 (INSPVAXA with INS):**
+   - **For UM981 (INSPVAXA with INS):**
      - Position is ALREADY tilt-compensated by internal IMU fusion
      - Pass through position unchanged
      - Use roll/pitch from INSPVAXA for display and heading rate compensation
      - Set `position_compensated = true`
 
-   - **For dual-GPS without internal IMU (F9P RELPOSNED, KSXT):**
+   - **For dual-GPS without internal IMU (F9P RELPOSNED, UM982 KSXT):**
      - Position is raw antenna position - NOT compensated
      - Use roll from SAME message as position (synchronized)
      - Apply our tilt correction
@@ -185,9 +188,9 @@ Mitigations for dual-GPS-only systems (F9P without external IMU):
 
    - Apply tilt correction (when needed):
      ```
-     // Skip if source already compensated (UM981/UM982 INS)
+     // Skip if source already compensated (UM981 INS only - NOT UM982)
      if (gnssData.hasINS && gnssData.insStatus >= INS_ALIGNED) {
-         // Position already tilt-compensated by UM98x internal IMU
+         // Position already tilt-compensated by UM981 internal IMU
          lat_corrected = lat;
          lon_corrected = lon;
          position_compensated = true;
